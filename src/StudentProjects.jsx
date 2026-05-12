@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import { Link } from "react-router-dom";
+import { useCart } from "./CartContext";
 import "./StudentProjects.css";
 
 // ─── SVG Icon Library ─────────────────────────────────────────────────────────
@@ -97,9 +99,9 @@ const CATEGORIES = ["All", "Web Development", "Mobile", "Data Science", "AI/ML",
 const PROJECTS = [
   {
     id: 1,
+    slug: "library-management-system",
     title: "Library Management System",
-    description:
-      "Complete library management with book tracking, member management, and automated fine calculation.",
+    description: "Complete library management with book tracking, member management, and automated fine calculation.",
     category: "Web Development",
     tags: ["React", "Django", "PostgreSQL"],
     level: "Intermediate",
@@ -111,9 +113,9 @@ const PROJECTS = [
   },
   {
     id: 2,
+    slug: "hardware-store-management",
     title: "Hardware Store Management",
-    description:
-      "Inventory management system for hardware stores with billing and stock tracking.",
+    description: "Inventory management system for hardware stores with billing and stock tracking.",
     category: "Web Development",
     tags: ["Next.js", "Django", "MySQL"],
     level: "Advanced",
@@ -125,9 +127,9 @@ const PROJECTS = [
   },
   {
     id: 3,
+    slug: "code-collaboration-platform",
     title: "Code Collaboration Platform",
-    description:
-      "Real-time code sharing and collaboration platform with version control.",
+    description: "Real-time code sharing and collaboration platform with version control.",
     category: "Web Development",
     tags: ["React", "Node.js", "Socket.io"],
     level: "Advanced",
@@ -139,9 +141,9 @@ const PROJECTS = [
   },
   {
     id: 4,
+    slug: "hospital-management-system",
     title: "Hospital Management System",
-    description:
-      "Comprehensive hospital management with patient records, appointments, and billing.",
+    description: "Comprehensive hospital management with patient records, appointments, and billing.",
     category: "Web Development",
     tags: ["Django", "React", "PostgreSQL"],
     level: "Advanced",
@@ -154,9 +156,9 @@ const PROJECTS = [
   },
   {
     id: 5,
+    slug: "inventory-management-system",
     title: "Inventory Management System",
-    description:
-      "Advanced inventory tracking with analytics, alerts, and multi-location support.",
+    description: "Advanced inventory tracking with analytics, alerts, and multi-location support.",
     category: "Web Development",
     tags: ["React", "Django", "Redis"],
     level: "Intermediate",
@@ -168,9 +170,9 @@ const PROJECTS = [
   },
   {
     id: 6,
+    slug: "ai-chatbot-system",
     title: "AI ChatBot System",
-    description:
-      "Intelligent chatbot with natural language processing and learning capabilities.",
+    description: "Intelligent chatbot with natural language processing and learning capabilities.",
     category: "AI/ML",
     tags: ["Python", "TensorFlow", "Flask"],
     level: "Expert",
@@ -182,9 +184,9 @@ const PROJECTS = [
   },
   {
     id: 7,
+    slug: "expense-tracker-app",
     title: "Expense Tracker App",
-    description:
-      "Mobile-first expense tracking app with charts, budgets, and category management.",
+    description: "Mobile-first expense tracking app with charts, budgets, and category management.",
     category: "Mobile",
     tags: ["React Native", "Firebase"],
     level: "Beginner",
@@ -196,9 +198,9 @@ const PROJECTS = [
   },
   {
     id: 8,
+    slug: "stock-price-prediction",
     title: "Stock Price Prediction",
-    description:
-      "ML-powered stock price prediction using LSTM neural networks and historical data.",
+    description: "ML-powered stock price prediction using LSTM neural networks and historical data.",
     category: "Data Science",
     tags: ["Python", "Keras", "Pandas"],
     level: "Expert",
@@ -266,30 +268,205 @@ function MarqueeBanner() {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function Navbar() {
+// ─── Logo block (shared between navbar + sidebar) ────────────────────────────
+function NavLogo() {
   return (
-    <nav className="wx-navbar">
-      <div className="wx-container wx-navbar__inner">
-        <a className="wx-navbar__logo" href="https://webxter.in">
-          <video autoPlay loop playsInline width="50" height="50">
-            <source src="/webxter-preloader.mp4" type="video/mp4" />
-            <img alt="logo" width="50" height="50" src="/favicon-extra-space.svg" />
-          </video>
-          <img alt="logo" className="wx-logo-wordmark" width="120" height="25"
-            src="https://www.webxter.in/_next/image?url=%2Fwebxter-text-light.png&w=256&q=75" />
-        </a>
-        <div className="wx-navbar__links">
-          <a href="https://webxter.in/courses">Courses</a>
-          <a href="https://webxter.in/student-projects" className="wx-active">Projects</a>
-          <a href="https://webxter.in/about">About</a>
-          <a href="https://webxter.in/contact">Contact</a>
-        </div>
-        <div className="wx-navbar__actions">
-          <a href="https://webxter.in/login" className="wx-btn wx-btn--ghost">Sign In</a>
-          <a href="https://webxter.in/contact" className="wx-btn wx-btn--primary">Get Quote</a>
-        </div>
+    <a className="wx-navbar__logo" href="https://webxter.in">
+       <video muted autoPlay loop playsInline width="70" height="50" className="wx-footer__logo-video">
+                <source src="https://www.webxter.in/webxter-preloader.mp4" type="video/mp4" />
+                <img alt="logo" loading="lazy" width="50" height="50" decoding="async"
+                  src="https://www.webxter.in/favicon-extra-space.svg" style={{ color: "transparent" }} />
+              </video>
+              <img
+                alt="logo" loading="lazy" width="200" height="25" decoding="async"
+                srcSet="https://www.webxter.in/_next/image?url=%2Fwebxter-text-light.png&w=256&q=75 1x, https://www.webxter.in/_next/image?url=%2Fwebxter-text-light.png&w=640&q=75 2x"
+                src="https://www.webxter.in/_next/image?url=%2Fwebxter-text-light.png&w=640&q=75"
+                style={{ color: "transparent" }}
+              />
+    </a>
+  );
+}
+
+// ─── Mobile Sidebar ───────────────────────────────────────────────────────────
+function MobileSidebar({ open, onClose }) {
+  // lock body scroll when open
+  useEffect(() => {
+    if (open) document.body.style.overflow = "hidden";
+    else document.body.style.overflow = "";
+    return () => { document.body.style.overflow = ""; };
+  }, [open]);
+
+  // close on Escape
+  useEffect(() => {
+    const handler = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  return (
+    <>
+      {/* Backdrop */}
+      {open && (
+        <div
+          className="wx-sidebar-backdrop"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Drawer */}
+      <div
+        role="dialog"
+        aria-label="Navigation menu"
+        data-state={open ? "open" : "closed"}
+        className={`wx-sidebar ${open ? "wx-sidebar--open" : "wx-sidebar--closed"}`}
+        tabIndex={-1}
+      >
+        <nav className="wx-sidebar__nav">
+          {/* Logo */}
+          <a className="wx-sidebar__logo" href="https://webxter.in">
+            <video autoPlay loop playsInline width="50" height="50">
+              <source src="https://www.webxter.in/webxter-preloader.mp4" type="video/mp4" />
+              <img alt="logo" loading="lazy" width="50" height="50" decoding="async"
+                src="https://www.webxter.in/favicon-extra-space.svg" style={{ color: "transparent" }} />
+            </video>
+            <img
+              alt="logo" loading="lazy" width="120" height="25" decoding="async"
+              srcSet="https://www.webxter.in/_next/image?url=%2Fwebxter-text-light.png&w=128&q=75 1x, https://www.webxter.in/_next/image?url=%2Fwebxter-text-light.png&w=256&q=75 2x"
+              src="https://www.webxter.in/_next/image?url=%2Fwebxter-text-light.png&w=256&q=75"
+              style={{ color: "transparent" }}
+            />
+          </a>
+
+          {/* Links */}
+          <div className="wx-sidebar__links">
+            {/* Services (non-functional dropdown label, matching original) */}
+            <div className="wx-sidebar__dropdown-row">
+              <button className="wx-sidebar__dropdown-btn">
+                Services
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                  fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                  className="wx-sidebar__chevron">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
+            </div>
+            <a className="wx-sidebar__link" href="https://webxter.in/careers">Careers</a>
+            <a className="wx-sidebar__link" href="https://webxter.in/courses">Courses</a>
+            <a className="wx-sidebar__link wx-sidebar__link--active" href="#projects">Projects</a>
+            <a className="wx-sidebar__link" href="https://student.webxter.in">Student Portal</a>
+            <a className="wx-sidebar__link" href="https://webxter.in/verify-certificate">Verify</a>
+            <a className="wx-sidebar__link" href="https://webxter.in/blogs">Blogs</a>
+            <a className="wx-sidebar__link" href="https://webxter.in/about">About</a>
+            <div className="wx-sidebar__dropdown-row">
+              <button className="wx-sidebar__dropdown-btn">
+                More
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                  fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                  className="wx-sidebar__chevron">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="wx-sidebar__actions">
+            <button className="wx-sidebar__btn-outline">
+              <a href="https://webxter.in/login">Sign In</a>
+            </button>
+            <button className="wx-sidebar__btn-primary">Apply Now</button>
+          </div>
+        </nav>
+
+        {/* Close button */}
+        <button
+          type="button"
+          className="wx-sidebar__close"
+          onClick={onClose}
+          aria-label="Close menu"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M18 6 6 18" /><path d="m6 6 12 12" />
+          </svg>
+          <span className="wx-sr-only">Close</span>
+        </button>
       </div>
-    </nav>
+    </>
+  );
+}
+
+// ─── Hamburger icon ───────────────────────────────────────────────────────────
+function HamburgerIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="3" y1="6"  x2="21" y2="6"  />
+      <line x1="3" y1="12" x2="21" y2="12" />
+      <line x1="3" y1="18" x2="21" y2="18" />
+    </svg>
+  );
+}
+
+function Navbar() {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { cart } = useCart();
+
+  return (
+    <>
+      <nav className="wx-navbar">
+        <div className="wx-container wx-navbar__inner">
+          <NavLogo />
+
+          {/* Desktop links */}
+          <div className="wx-navbar__links">
+            <a href="https://webxter.in/courses">Courses</a>
+            <a href="https://webxter.in/student-projects" className="wx-active">Projects</a>
+            <a href="https://webxter.in/about">About</a>
+            <a href="https://webxter.in/contact">Contact</a>
+          </div>
+
+          {/* Desktop actions */}
+          <div className="wx-navbar__actions">
+            {/* Cart icon */}
+            <Link to="/cart" className="wx-navbar__cart" aria-label="Cart">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+                <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+              </svg>
+              {cart.length > 0 && (
+                <span className="wx-navbar__cart-count">{cart.length}</span>
+              )}
+            </Link>
+            <a href="https://webxter.in/login" className="wx-btn wx-btn--ghost">Sign In</a>
+            <a href="https://webxter.in/contact" className="wx-btn wx-btn--primary">Get Quote</a>
+          </div>
+
+          {/* Mobile: cart + hamburger */}
+          <div className="wx-navbar__mobile-actions">
+            <Link to="/cart" className="wx-navbar__cart" aria-label="Cart">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+                <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+              </svg>
+              {cart.length > 0 && (
+                <span className="wx-navbar__cart-count">{cart.length}</span>
+              )}
+            </Link>
+            <button
+              className="wx-navbar__hamburger"
+              onClick={() => setSidebarOpen(true)}
+              aria-label="Open menu"
+            >
+              <HamburgerIcon />
+            </button>
+          </div>
+        </div>
+      </nav>
+
+      <MobileSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+    </>
   );
 }
 
@@ -398,7 +575,7 @@ function ProjectCard({ project, onAddToCart }) {
           onClick={() => !project.soldOut && onAddToCart(project)}>
           {project.soldOut ? "Sold Out" : "Add to Cart"}
         </button>
-        <a href="https://webxter.in/contact" className="wx-btn wx-btn--ghost wx-btn--full">Know More</a>
+        <Link to={`/projects/${project.slug}`} className="wx-btn wx-btn--ghost wx-btn--full">View Details</Link>
       </div>
     </div>
   );
@@ -471,7 +648,12 @@ function MobileSwiper({ items, onAddToCart }) {
   if (total === 0) {
     return (
       <div className="wx-empty">
-        <span>😕</span>
+        <span className="wx-empty__icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            <line x1="8" y1="11" x2="14" y2="11"/>
+          </svg>
+        </span>
         <p>No projects found. Try a different category.</p>
       </div>
     );
@@ -588,7 +770,12 @@ function ProjectsSection({ onAddToCart }) {
         ) : (
           filtered.length === 0 ? (
             <div className="wx-empty">
-              <span>😕</span>
+              <span className="wx-empty__icon">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                  <line x1="8" y1="11" x2="14" y2="11"/>
+                </svg>
+              </span>
               <p>No projects found. Try a different search or category.</p>
             </div>
           ) : (
@@ -794,49 +981,154 @@ function CartDrawer({ cart, onRemove, onClose }) {
 }
 
 function Footer() {
+  const [email, setEmail] = useState("");
+
   return (
     <footer className="wx-footer">
-      <div className="wx-container wx-footer__grid">
-        <div className="wx-footer__brand">
-          <img alt="Webxter" width="120" height="25"
-            src="https://www.webxter.in/_next/image?url=%2Fwebxter-text-light.png&w=256&q=75"
-            style={{ filter: "brightness(0) saturate(100%) invert(40%) sepia(80%) saturate(500%) hue-rotate(170deg)" }} />
-          <p>Empowering individuals through quality education and innovative learning experiences since 2010.</p>
-          <div className="wx-footer__contact">
-            <span><Icon.Mail /> info@webxter.in</span>
-            <span><Icon.Phone /> +91 (826) 479-6534</span>
+      <div className="wx-container">
+        <div className="wx-footer__grid">
+
+          {/* ── Brand col ── */}
+          <div className="wx-footer__brand">
+            {/* Logo */}
+            <a className="wx-footer__logo" href="https://webxter.in">
+              <video muted autoPlay loop playsInline width="70" height="50" className="wx-footer__logo-video">
+                <source src="https://www.webxter.in/webxter-preloader.mp4" type="video/mp4" />
+                <img alt="logo" loading="lazy" width="50" height="50" decoding="async"
+                  src="https://www.webxter.in/favicon-extra-space.svg" style={{ color: "transparent" }} />
+              </video>
+              <img
+                alt="logo" loading="lazy" width="200" height="25" decoding="async"
+                srcSet="https://www.webxter.in/_next/image?url=%2Fwebxter-text-light.png&w=256&q=75 1x, https://www.webxter.in/_next/image?url=%2Fwebxter-text-light.png&w=640&q=75 2x"
+                src="https://www.webxter.in/_next/image?url=%2Fwebxter-text-light.png&w=640&q=75"
+                style={{ color: "transparent" }}
+              />
+            </a>
+
+            <p className="wx-footer__tagline">
+              Empowering individuals through quality education and innovative learning experiences since 2010.
+            </p>
+
+            {/* Contact details */}
+            <div className="wx-footer__contact">
+              <div className="wx-footer__contact-row">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="wx-footer__contact-icon">
+                  <rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+                </svg>
+                <span>info@webxter.in</span>
+              </div>
+              <div className="wx-footer__contact-row">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="wx-footer__contact-icon">
+                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+                </svg>
+                <span>+91 (826) 479-6534</span>
+              </div>
+              <div className="wx-footer__contact-row">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="wx-footer__contact-icon">
+                  <path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/>
+                  <circle cx="12" cy="10" r="3"/>
+                </svg>
+                <span>Building D900, Second Floor, Ranjit Avenue, Amritsar, Punjab, India - 143001</span>
+              </div>
+              <div className="wx-footer__contact-row">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="wx-footer__contact-icon">
+                  <path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/>
+                  <circle cx="12" cy="10" r="3"/>
+                </svg>
+                <span>Business Village, Port saeed, Deira, Dubai, UAE</span>
+              </div>
+            </div>
+
+            {/* Social */}
+            <div className="wx-footer__social">
+              <span className="wx-footer__social-label">Follow us on</span>
+              <a href="https://www.instagram.com/webxter_webs/" className="wx-footer__social-link" aria-label="Instagram">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect width="20" height="20" x="2" y="2" rx="5" ry="5"/>
+                  <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
+                  <line x1="17.5" x2="17.51" y1="6.5" y2="6.5"/>
+                </svg>
+              </a>
+              <a href="https://www.linkedin.com/company/webxter/" className="wx-footer__social-link" aria-label="LinkedIn">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/>
+                  <rect width="4" height="12" x="2" y="9"/>
+                  <circle cx="4" cy="4" r="2"/>
+                </svg>
+              </a>
+            </div>
+          </div>
+
+          {/* ── Quick Links ── */}
+          <div className="wx-footer__links">
+            <h3 className="wx-footer__col-title">Quick Links</h3>
+            <ul className="wx-footer__link-list">
+              <li><a href="https://webxter.in/about">About Us</a></li>
+              <li><a href="#projects">Projects</a></li>
+              <li><a href="https://webxter.in/courses">Courses</a></li>
+              <li><a href="https://student.webxter.in" target="_blank" rel="noopener noreferrer">Student Portal</a></li>
+              <li><a href="https://webxter.in/contact">Contact</a></li>
+              <li><a href="https://webxter.in/blogs">Blogs</a></li>
+            </ul>
+          </div>
+
+          {/* ── Resources ── */}
+          <div className="wx-footer__links">
+            <h3 className="wx-footer__col-title">Resources</h3>
+            <ul className="wx-footer__link-list">
+              <li><a href="https://webxter.in/terms-of-service">Terms of Service</a></li>
+              <li><a href="https://webxter.in/privacy-policy">Privacy Policy</a></li>
+            </ul>
+          </div>
+
+          {/* ── Newsletter ── */}
+          <div className="wx-footer__newsletter">
+            <h3 className="wx-footer__col-title">Subscribe to Our Newsletter</h3>
+            <p className="wx-footer__newsletter-desc">
+              Stay updated with the latest courses, events, and educational resources.
+            </p>
+            <form className="wx-footer__newsletter-form" onSubmit={(e) => e.preventDefault()}>
+              <div className="wx-footer__newsletter-input-wrap">
+                <input
+                  type="email"
+                  placeholder="Enter your email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="wx-footer__newsletter-input"
+                />
+                <button type="submit" className="wx-footer__newsletter-btn" aria-label="Subscribe">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+                  </svg>
+                </button>
+              </div>
+              <p className="wx-footer__newsletter-note">
+                By subscribing, you agree to our Privacy Policy and consent to receive updates from our company.
+              </p>
+            </form>
+          </div>
+
+        </div>{/* /grid */}
+
+        {/* ── Divider ── */}
+        <div className="wx-footer__divider" />
+
+        {/* ── Bottom bar ── */}
+        <div className="wx-footer__bottom">
+          <p>© 2026 Webxter. All rights reserved. ISO 9001:2015 Certified</p>
+          <div className="wx-footer__bottom-links">
+            <a href="https://webxter.in/terms-of-service">Terms of Service</a>
+            <a href="https://webxter.in/privacy-policy">Privacy Policy</a>
           </div>
         </div>
-        <div className="wx-footer__links">
-          <h4>Quick Links</h4>
-          <a href="https://webxter.in/about">About Us</a>
-          <a href="https://webxter.in/courses">Courses</a>
-          <a href="https://student.webxter.in/">Student Portal</a>
-          <a href="https://webxter.in/contact">Contact</a>
-          <a href="https://webxter.in/blogs">Blogs</a>
-        </div>
-        <div className="wx-footer__links">
-          <h4>Resources</h4>
-          <a href="https://webxter.in/terms-of-service">Terms of Service</a>
-          <a href="https://webxter.in/privacy-policy">Privacy Policy</a>
-          <a href="https://webxter.in/verify-certificate">Verify Certificate</a>
-          <a href="https://webxter.in/careers">Careers</a>
-        </div>
-        <div className="wx-footer__newsletter">
-          <h4>Newsletter</h4>
-          <p>Stay updated with the latest projects, courses, and offers.</p>
-          <div className="wx-newsletter-form">
-            <input type="email" placeholder="Your email address" />
-            <button className="wx-btn wx-btn--primary">Subscribe</button>
-          </div>
-        </div>
-      </div>
-      <div className="wx-footer__bottom">
-        <p>© 2026 Webxter. All rights reserved. ISO 9001:2015 Certified</p>
-        <div className="wx-footer__bottom-links">
-          <a href="https://webxter.in/terms-of-service">Terms</a>
-          <a href="https://webxter.in/privacy-policy">Privacy</a>
-        </div>
+
       </div>
     </footer>
   );
@@ -845,43 +1137,16 @@ function Footer() {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function StudentProjects() {
-  const [cart, setCart] = useState([]);
-  const [cartOpen, setCartOpen] = useState(false);
-  const [toast, setToast] = useState(null);
-
-  const addToCart = (project) => {
-    setCart((prev) => [...prev, project]);
-    setToast(`"${project.title}" added to cart!`);
-    setTimeout(() => setToast(null), 3000);
-  };
-
-  const removeFromCart = (idx) => {
-    setCart((prev) => prev.filter((_, i) => i !== idx));
-  };
+  const { addToCart } = useCart();
 
   return (
-    <div className="wx-page">
-      <MarqueeBanner />
-      <Navbar />
-
-      <button className="wx-cart-fab" onClick={() => setCartOpen(true)}>
-        <Icon.Cart />
-        {cart.length > 0 && <span className="wx-cart-fab__count">{cart.length}</span>}
-      </button>
-
-      {toast && <div className="wx-toast">{toast}</div>}
-
-      {cartOpen && (
-        <CartDrawer cart={cart} onRemove={removeFromCart} onClose={() => setCartOpen(false)} />
-      )}
-
+    <>
       <HeroBanner />
       <HowWeHelp />
       <ProjectsSection onAddToCart={addToCart} />
       <WhyChoose />
       <Testimonials />
       <CtaBanner />
-      <Footer />
-    </div>
+    </>
   );
 }
