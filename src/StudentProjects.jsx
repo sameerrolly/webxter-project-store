@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { useCart } from "./CartContext";
+import { getProjects } from "./admin/adminStore";
 import "./StudentProjects.css";
 
 // ─── SVG Icon Library ─────────────────────────────────────────────────────────
@@ -96,121 +97,8 @@ const Icon = {
 
 const CATEGORIES = ["All", "Web Development", "Mobile", "Data Science", "AI/ML", "Desktop", "IoT"];
 
-const PROJECTS = [
-  {
-    id: 1,
-    slug: "library-management-system",
-    title: "Library Management System",
-    description: "Complete library management with book tracking, member management, and automated fine calculation.",
-    category: "Web Development",
-    tags: ["React", "Django", "PostgreSQL"],
-    level: "Intermediate",
-    delivery: "1 week",
-    originalPrice: 15000,
-    price: 9999,
-    features: ["Book Catalog", "Member Management", "Issue/Return System", "Fine Calculation"],
-    badge: "Popular",
-  },
-  {
-    id: 2,
-    slug: "hardware-store-management",
-    title: "Hardware Store Management",
-    description: "Inventory management system for hardware stores with billing and stock tracking.",
-    category: "Web Development",
-    tags: ["Next.js", "Django", "MySQL"],
-    level: "Advanced",
-    delivery: "1 week",
-    originalPrice: 19000,
-    price: 14999,
-    features: ["Inventory Tracking", "Billing System", "Supplier Management", "Reports"],
-    badge: null,
-  },
-  {
-    id: 3,
-    slug: "code-collaboration-platform",
-    title: "Code Collaboration Platform",
-    description: "Real-time code sharing and collaboration platform with version control.",
-    category: "Web Development",
-    tags: ["React", "Node.js", "Socket.io"],
-    level: "Advanced",
-    delivery: "2–3 weeks",
-    originalPrice: 25000,
-    price: 14999,
-    features: ["Real-time Editing", "Version Control", "Chat System", "Project Management"],
-    badge: "Hot",
-  },
-  {
-    id: 4,
-    slug: "hospital-management-system",
-    title: "Hospital Management System",
-    description: "Comprehensive hospital management with patient records, appointments, and billing.",
-    category: "Web Development",
-    tags: ["Django", "React", "PostgreSQL"],
-    level: "Advanced",
-    delivery: "1 week",
-    originalPrice: 19000,
-    price: 14999,
-    features: ["Patient Records", "Appointment System", "Billing", "Doctor Management"],
-    badge: null,
-    soldOut: true,
-  },
-  {
-    id: 5,
-    slug: "inventory-management-system",
-    title: "Inventory Management System",
-    description: "Advanced inventory tracking with analytics, alerts, and multi-location support.",
-    category: "Web Development",
-    tags: ["React", "Django", "Redis"],
-    level: "Intermediate",
-    delivery: "1–2 weeks",
-    originalPrice: 15500,
-    price: 12999,
-    features: ["Multi-location", "Analytics", "Alerts", "Barcode Support"],
-    badge: null,
-  },
-  {
-    id: 6,
-    slug: "ai-chatbot-system",
-    title: "AI ChatBot System",
-    description: "Intelligent chatbot with natural language processing and learning capabilities.",
-    category: "AI/ML",
-    tags: ["Python", "TensorFlow", "Flask"],
-    level: "Expert",
-    delivery: "1 week",
-    originalPrice: 20500,
-    price: 14999,
-    features: ["NLP Processing", "Learning Algorithm", "Multi-platform", "Analytics"],
-    badge: "New",
-  },
-  {
-    id: 7,
-    slug: "expense-tracker-app",
-    title: "Expense Tracker App",
-    description: "Mobile-first expense tracking app with charts, budgets, and category management.",
-    category: "Mobile",
-    tags: ["React Native", "Firebase"],
-    level: "Beginner",
-    delivery: "3–5 days",
-    originalPrice: 10000,
-    price: 7499,
-    features: ["Budget Tracking", "Charts", "Categories", "Export Reports"],
-    badge: null,
-  },
-  {
-    id: 8,
-    slug: "stock-price-prediction",
-    title: "Stock Price Prediction",
-    description: "ML-powered stock price prediction using LSTM neural networks and historical data.",
-    category: "Data Science",
-    tags: ["Python", "Keras", "Pandas"],
-    level: "Expert",
-    delivery: "1–2 weeks",
-    originalPrice: 22000,
-    price: 16999,
-    features: ["LSTM Model", "Live Data", "Visualization", "Backtesting"],
-    badge: "Popular",
-  },
-];
+// Projects are loaded from adminStore (localStorage-backed, admin-editable)
+// The component reads fresh data on mount so admin changes reflect immediately.
 
 const LEVEL_COLORS = {
   Beginner: "#22c55e",
@@ -717,6 +605,12 @@ function ProjectsSection({ onAddToCart }) {
   const [activeCategory, setActiveCategory] = useState("All");
   const [search, setSearch] = useState("");
   const [isMobile, setIsMobile] = useState(false);
+  // Load from adminStore so admin edits reflect live
+  const [PROJECTS, setPROJECTS] = useState(() => getProjects().filter((p) => p.active));
+
+  useEffect(() => {
+    setPROJECTS(getProjects().filter((p) => p.active));
+  }, []);
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 767px)");

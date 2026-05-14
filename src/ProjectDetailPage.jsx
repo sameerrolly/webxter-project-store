@@ -1,200 +1,163 @@
 import React, { useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useCart } from "./CartContext";
+import { getProjects, validateCoupon, incrementCouponUsage } from "./admin/adminStore";
 import "./ProjectDetailPage.css";
-
-// ─── Shared project data (single source of truth) ────────────────────────────
-export const PROJECTS = [
-  {
-    id: 1, slug: "library-management-system",
-    title: "Library Management System",
-    description: "Complete library management with book tracking, member management, and automated fine calculation. Built with a modern stack and ready for deployment.",
-    longDesc: "This project covers the full lifecycle of a library — from cataloguing books and managing members to issuing/returning books and auto-calculating fines. Comes with an admin dashboard, search & filter, and detailed reports.",
-    category: "Web Development",
-    tags: ["React", "Django", "PostgreSQL"],
-    level: "Intermediate", delivery: "1 week",
-    originalPrice: 15000, price: 9999,
-    features: ["Book Catalog", "Member Management", "Issue/Return System", "Fine Calculation"],
-    includes: ["Full Source Code", "Documentation (PDF)", "PPT Presentation", "Video Tutorial", "Deployment Guide"],
-    screenshots: [], badge: "Popular",
-  },
-  {
-    id: 2, slug: "hardware-store-management",
-    title: "Hardware Store Management",
-    description: "Inventory management system for hardware stores with billing and stock tracking.",
-    longDesc: "Manage your hardware store inventory end-to-end. Track stock levels, generate bills, manage suppliers, and get low-stock alerts. Includes a clean POS-style billing interface.",
-    category: "Web Development",
-    tags: ["Next.js", "Django", "MySQL"],
-    level: "Advanced", delivery: "1 week",
-    originalPrice: 19000, price: 14999,
-    features: ["Inventory Tracking", "Billing System", "Supplier Management", "Reports"],
-    includes: ["Full Source Code", "Documentation (PDF)", "PPT Presentation", "Video Tutorial", "Deployment Guide"],
-    screenshots: [], badge: null,
-  },
-  {
-    id: 3, slug: "code-collaboration-platform",
-    title: "Code Collaboration Platform",
-    description: "Real-time code sharing and collaboration platform with version control.",
-    longDesc: "A GitHub-meets-CodePen platform where teams can write, share, and review code in real time. Includes live cursors, inline comments, version history, and a built-in chat.",
-    category: "Web Development",
-    tags: ["React", "Node.js", "Socket.io"],
-    level: "Advanced", delivery: "2–3 weeks",
-    originalPrice: 25000, price: 14999,
-    features: ["Real-time Editing", "Version Control", "Chat System", "Project Management"],
-    includes: ["Full Source Code", "Documentation (PDF)", "PPT Presentation", "Video Tutorial", "Deployment Guide"],
-    screenshots: [], badge: "Hot",
-  },
-  {
-    id: 4, slug: "hospital-management-system",
-    title: "Hospital Management System",
-    description: "Comprehensive hospital management with patient records, appointments, and billing.",
-    longDesc: "A full-featured HMS covering patient registration, doctor scheduling, OPD/IPD management, pharmacy, and billing. Role-based access for admin, doctors, and staff.",
-    category: "Web Development",
-    tags: ["Django", "React", "PostgreSQL"],
-    level: "Advanced", delivery: "1 week",
-    originalPrice: 19000, price: 14999,
-    features: ["Patient Records", "Appointment System", "Billing", "Doctor Management"],
-    includes: ["Full Source Code", "Documentation (PDF)", "PPT Presentation", "Video Tutorial", "Deployment Guide"],
-    screenshots: [], badge: null, soldOut: true,
-  },
-  {
-    id: 5, slug: "inventory-management-system",
-    title: "Inventory Management System",
-    description: "Advanced inventory tracking with analytics, alerts, and multi-location support.",
-    longDesc: "Track stock across multiple warehouses, set reorder alerts, scan barcodes, and generate analytics dashboards. Integrates with popular e-commerce platforms.",
-    category: "Web Development",
-    tags: ["React", "Django", "Redis"],
-    level: "Intermediate", delivery: "1–2 weeks",
-    originalPrice: 15500, price: 12999,
-    features: ["Multi-location", "Analytics", "Alerts", "Barcode Support"],
-    includes: ["Full Source Code", "Documentation (PDF)", "PPT Presentation", "Video Tutorial", "Deployment Guide"],
-    screenshots: [], badge: null,
-  },
-  {
-    id: 6, slug: "ai-chatbot-system",
-    title: "AI ChatBot System",
-    description: "Intelligent chatbot with natural language processing and learning capabilities.",
-    longDesc: "An NLP-powered chatbot that learns from conversations, supports multi-platform deployment (web, WhatsApp, Telegram), and provides analytics on user interactions.",
-    category: "AI/ML",
-    tags: ["Python", "TensorFlow", "Flask"],
-    level: "Expert", delivery: "1 week",
-    originalPrice: 20500, price: 14999,
-    features: ["NLP Processing", "Learning Algorithm", "Multi-platform", "Analytics"],
-    includes: ["Full Source Code", "Documentation (PDF)", "PPT Presentation", "Video Tutorial", "Model Weights"],
-    screenshots: [], badge: "New",
-  },
-  {
-    id: 7, slug: "expense-tracker-app",
-    title: "Expense Tracker App",
-    description: "Mobile-first expense tracking app with charts, budgets, and category management.",
-    longDesc: "Track daily expenses, set monthly budgets per category, visualise spending with charts, and export reports as PDF/CSV. Works offline with local storage sync.",
-    category: "Mobile",
-    tags: ["React Native", "Firebase"],
-    level: "Beginner", delivery: "3–5 days",
-    originalPrice: 10000, price: 7499,
-    features: ["Budget Tracking", "Charts", "Categories", "Export Reports"],
-    includes: ["Full Source Code", "Documentation (PDF)", "PPT Presentation", "Video Tutorial"],
-    screenshots: [], badge: null,
-  },
-  {
-    id: 8, slug: "stock-price-prediction",
-    title: "Stock Price Prediction",
-    description: "ML-powered stock price prediction using LSTM neural networks and historical data.",
-    longDesc: "Uses LSTM deep learning to predict stock prices from historical OHLCV data. Includes backtesting, live data feeds, interactive charts, and a Flask API for integration.",
-    category: "Data Science",
-    tags: ["Python", "Keras", "Pandas"],
-    level: "Expert", delivery: "1–2 weeks",
-    originalPrice: 22000, price: 16999,
-    features: ["LSTM Model", "Live Data", "Visualization", "Backtesting"],
-    includes: ["Full Source Code", "Documentation (PDF)", "PPT Presentation", "Video Tutorial", "Trained Model"],
-    screenshots: [], badge: "Popular",
-  },
-];
 
 const LEVEL_COLORS = {
   Beginner: "#22c55e", Intermediate: "#f59e0b", Advanced: "#ef4444", Expert: "#8b5cf6",
 };
 
-const COUPON_CODE = "STUDENT20";
-const COUPON_DISCOUNT = 0.20;
-
-// ─── Navbar (same as main page) ───────────────────────────────────────────────
-function NavLogo() {
-  return (
-    <a className="pdp-navbar__logo" href="/">
-      <video autoPlay loop playsInline width="50" height="50">
-        <source src="https://www.webxter.in/webxter-preloader.mp4" type="video/mp4" />
-        <img alt="logo" loading="lazy" width="50" height="50" decoding="async"
-          src="https://www.webxter.in/favicon-extra-space.svg" style={{ color: "transparent" }} />
-      </video>
-      <img alt="logo" loading="lazy" width="120" height="25" decoding="async"
-        srcSet="https://www.webxter.in/_next/image?url=%2Fwebxter-text-light.png&w=128&q=75 1x, https://www.webxter.in/_next/image?url=%2Fwebxter-text-light.png&w=256&q=75 2x"
-        src="https://www.webxter.in/_next/image?url=%2Fwebxter-text-light.png&w=256&q=75"
-        style={{ color: "transparent" }} />
-    </a>
-  );
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function getYouTubeId(url) {
+  if (!url) return null;
+  const m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/);
+  return m ? m[1] : null;
 }
 
-function PDPNavbar() {
-  return (
-    <nav className="pdp-navbar">
-      <div className="pdp-container pdp-navbar__inner">
-        <NavLogo />
-        <div className="pdp-navbar__links">
-          <a href="/">Projects</a>
-          <a href="https://webxter.in/courses">Courses</a>
-          <a href="https://webxter.in/about">About</a>
-          <a href="https://webxter.in/contact">Contact</a>
-        </div>
-        <div className="pdp-navbar__actions">
-          <a href="https://webxter.in/login" className="pdp-btn pdp-btn--ghost">Sign In</a>
-          <a href="https://webxter.in/contact" className="pdp-btn pdp-btn--primary">Get Quote</a>
-        </div>
-      </div>
-    </nav>
-  );
-}
-
-// ─── Screenshot / demo placeholder ───────────────────────────────────────────
+// ─── Media Gallery — supports images, videos, YouTube ─────────────────────────
 function MediaGallery({ project }) {
+  // Build unified slide list: demoVideo first (if set), then media items
+  const slides = [];
+  if (project.demoVideo) {
+    slides.push({ type: "video", url: project.demoVideo, caption: "Demo Video", featured: true });
+  }
+  const mediaItems = project.media?.length > 0
+    ? project.media
+    : (project.screenshots || []).map((url, i) => ({ type: "image", url, caption: `Screenshot ${i + 1}`, featured: i === 0 }));
+  slides.push(...mediaItems);
+
+  // If nothing at all, show 3 placeholders
+  const hasContent = slides.length > 0;
+  const displaySlides = hasContent ? slides : [null, null, null];
+
   const [active, setActive] = useState(0);
-  const slides = project.screenshots.length > 0
-    ? project.screenshots
-    : [null, null, null]; // placeholders
+  const current = displaySlides[active];
+
+  const renderMain = () => {
+    if (!current) return (
+      <div className="pdp-gallery__placeholder">
+        <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" opacity="0.3">
+          <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
+        </svg>
+        <span>Demo Preview</span>
+        <a href="https://webxter.in/contact" className="pdp-btn pdp-btn--primary pdp-btn--sm" style={{ marginTop: 12 }}>Request Demo</a>
+      </div>
+    );
+
+    const ytId = current.type === "video" ? getYouTubeId(current.url) : null;
+
+    if (ytId) return (
+      <iframe
+        src={`https://www.youtube.com/embed/${ytId}?rel=0&modestbranding=1`}
+        title={current.caption || "Demo Video"}
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allowFullScreen
+        className="pdp-gallery__iframe"
+      />
+    );
+
+    if (current.type === "video") return (
+      <video controls className="pdp-gallery__img" src={current.url}>
+        Your browser does not support video.
+      </video>
+    );
+
+    return <img src={current.url} alt={current.caption || "Screenshot"} className="pdp-gallery__img" />;
+  };
 
   return (
     <div className="pdp-gallery">
-      {/* Main view */}
       <div className="pdp-gallery__main">
-        {slides[active] ? (
-          <img src={slides[active]} alt={`Screenshot ${active + 1}`} className="pdp-gallery__img" />
-        ) : (
-          <div className="pdp-gallery__placeholder">
-            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" opacity="0.35">
-              <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
-            </svg>
-            <span>Demo Preview</span>
-            <a href="https://webxter.in/contact" className="pdp-btn pdp-btn--primary pdp-btn--sm" style={{ marginTop: 12 }}>
-              Request Demo
-            </a>
-          </div>
-        )}
+        {renderMain()}
         {project.badge && <span className="pdp-gallery__badge">{project.badge}</span>}
+        {current?.type === "video" && (
+          <span className="pdp-gallery__video-badge">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Video
+          </span>
+        )}
       </div>
-      {/* Thumbnails */}
-      <div className="pdp-gallery__thumbs">
-        {slides.map((s, i) => (
-          <button key={i} onClick={() => setActive(i)}
-            className={`pdp-gallery__thumb ${i === active ? "pdp-gallery__thumb--active" : ""}`}>
-            {s ? <img src={s} alt={`Thumb ${i + 1}`} /> : (
-              <div className="pdp-gallery__thumb-placeholder">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
-                </svg>
+
+      {displaySlides.length > 1 && (
+        <div className="pdp-gallery__thumbs">
+          {displaySlides.map((s, i) => {
+            const ytId = s?.type === "video" ? getYouTubeId(s.url) : null;
+            return (
+              <button key={i} onClick={() => setActive(i)}
+                className={`pdp-gallery__thumb ${i === active ? "pdp-gallery__thumb--active" : ""}`}
+                title={s?.caption || `Slide ${i + 1}`}>
+                {!s ? (
+                  <div className="pdp-gallery__thumb-placeholder">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/></svg>
+                  </div>
+                ) : ytId ? (
+                  <div className="pdp-gallery__thumb-video">
+                    <img src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`} alt="YouTube" />
+                    <div className="pdp-gallery__thumb-play">▶</div>
+                  </div>
+                ) : s.type === "video" ? (
+                  <div className="pdp-gallery__thumb-video">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+                  </div>
+                ) : (
+                  <img src={s.url} alt={s.caption || `Thumb ${i + 1}`} />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {current?.caption && (
+        <p className="pdp-gallery__caption">{current.caption}</p>
+      )}
+    </div>
+  );
+}
+
+// ─── Project Files section ────────────────────────────────────────────────────
+function ProjectFiles({ files }) {
+  if (!files?.length) return null;
+
+  const TYPE_META = {
+    github:  { label: "GitHub",       color: "#0f172a", bg: "#f1f5f9" },
+    drive:   { label: "Google Drive", color: "#1a73e8", bg: "#eff6ff" },
+    zip:     { label: "Download",     color: "#16a34a", bg: "#f0fdf4" },
+    docs:    { label: "Docs",         color: "#d97706", bg: "#fffbeb" },
+    demo:    { label: "Live Demo",    color: "#009fd4", bg: "#f0faff" },
+    other:   { label: "Link",         color: "#64748b", bg: "#f8f9fb" },
+  };
+
+  const icons = {
+    github: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>,
+    drive:  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9H9l-3-9H2"/><path d="M5.45 5.11L2 12h3l3-6.89M19.55 5.11L23 12h-3l-3-6.89"/><path d="M12 2L8.5 8.5h7L12 2z"/></svg>,
+    zip:    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
+    docs:   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>,
+    demo:   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>,
+    other:  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>,
+  };
+
+  return (
+    <div className="pdp-files">
+      <h2 className="pdp-files__title">Project Files & Links</h2>
+      <div className="pdp-files__grid">
+        {files.map((f, i) => {
+          const meta = TYPE_META[f.type] || TYPE_META.other;
+          return (
+            <a key={i} href={f.url} target="_blank" rel="noopener noreferrer" className="pdp-file-card">
+              <div className="pdp-file-card__icon" style={{ background: meta.bg, color: meta.color }}>
+                {icons[f.type] || icons.other}
               </div>
-            )}
-          </button>
-        ))}
+              <div className="pdp-file-card__info">
+                <div className="pdp-file-card__label">{f.label}</div>
+                <div className="pdp-file-card__type" style={{ color: meta.color }}>{meta.label}</div>
+              </div>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="pdp-file-card__arrow">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+              </svg>
+            </a>
+          );
+        })}
       </div>
     </div>
   );
@@ -205,53 +168,67 @@ function PurchasePanel({ project, onAddToCart }) {
   const navigate = useNavigate();
   const [coupon, setCoupon] = useState("");
   const [applied, setApplied] = useState(false);
+  const [couponDiscount, setCouponDiscount] = useState(0);
   const [couponError, setCouponError] = useState("");
+  const [couponObj, setCouponObj] = useState(null);
   const [added, setAdded] = useState(false);
 
-  const discount = Math.round(((project.originalPrice - project.price) / project.originalPrice) * 100);
-  const finalPrice = applied
-    ? Math.round(project.price * (1 - COUPON_DISCOUNT))
-    : project.price;
+  const baseDiscount = Math.round(((project.originalPrice - project.price) / project.originalPrice) * 100);
+  const finalPrice = applied ? Math.max(0, project.price - couponDiscount) : project.price;
 
   const applyCoupon = () => {
-    if (coupon.trim().toUpperCase() === COUPON_CODE) {
+    const result = validateCoupon(coupon, project.price);
+    if (result.valid) {
       setApplied(true);
+      setCouponDiscount(result.discount);
+      setCouponObj(result.coupon);
       setCouponError("");
     } else {
-      setCouponError("Invalid coupon code. Try STUDENT20");
+      setCouponError(result.error);
       setApplied(false);
+      setCouponDiscount(0);
     }
   };
 
+  const removeCoupon = () => {
+    setApplied(false); setCouponDiscount(0); setCoupon(""); setCouponObj(null); setCouponError("");
+  };
+
   const handleAddToCart = () => {
+    if (applied && couponObj) incrementCouponUsage(couponObj.code);
     onAddToCart({ ...project, price: finalPrice });
     setAdded(true);
     setTimeout(() => setAdded(false), 2000);
   };
 
   const handleBuyNow = () => {
+    if (applied && couponObj) incrementCouponUsage(couponObj.code);
     onAddToCart({ ...project, price: finalPrice });
     navigate("/checkout");
   };
 
   return (
     <div className="pdp-panel">
-      {/* Price block */}
+      {/* Price */}
       <div className="pdp-panel__price-block">
         <span className="pdp-panel__price-current">₹{finalPrice.toLocaleString("en-IN")}</span>
         <span className="pdp-panel__price-original">₹{project.originalPrice.toLocaleString("en-IN")}</span>
-        <span className="pdp-panel__discount">{applied ? Math.round(discount + COUPON_DISCOUNT * 100) : discount}% OFF</span>
+        <span className="pdp-panel__discount">
+          {applied
+            ? Math.round(((project.originalPrice - finalPrice) / project.originalPrice) * 100)
+            : baseDiscount}% OFF
+        </span>
       </div>
+
       {applied && (
         <div className="pdp-panel__coupon-success">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="20 6 9 17 4 12"/>
-          </svg>
-          STUDENT20 applied — extra 20% off!
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          {couponObj?.code} applied — saving ₹{couponDiscount.toLocaleString("en-IN")}!
+          <button onClick={removeCoupon} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "#16a34a", fontSize: ".85rem" }}>✕</button>
         </div>
       )}
 
-      {/* Delivery */}
+      {/* Meta */}
       <div className="pdp-panel__meta">
         <span className="pdp-panel__meta-item">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -264,42 +241,27 @@ function PurchasePanel({ project, onAddToCart }) {
       </div>
 
       {/* Coupon */}
-      <div className="pdp-panel__coupon">
-        <label className="pdp-panel__coupon-label">Have a coupon?</label>
-        <div className="pdp-panel__coupon-row">
-          <input
-            type="text"
-            placeholder="Enter code (e.g. STUDENT20)"
-            value={coupon}
-            onChange={(e) => { setCoupon(e.target.value); setCouponError(""); }}
-            className={`pdp-panel__coupon-input ${couponError ? "pdp-panel__coupon-input--error" : ""}`}
-          />
-          <button className="pdp-btn pdp-btn--outline pdp-btn--sm" onClick={applyCoupon}>Apply</button>
+      {!applied && (
+        <div className="pdp-panel__coupon">
+          <label className="pdp-panel__coupon-label">Have a coupon?</label>
+          <div className="pdp-panel__coupon-row">
+            <input type="text" placeholder="Enter coupon code"
+              value={coupon} onChange={(e) => { setCoupon(e.target.value.toUpperCase()); setCouponError(""); }}
+              className={`pdp-panel__coupon-input${couponError ? " pdp-panel__coupon-input--error" : ""}`} />
+            <button className="pdp-btn pdp-btn--outline pdp-btn--sm" onClick={applyCoupon} type="button">Apply</button>
+          </div>
+          {couponError && <p className="pdp-panel__coupon-error">{couponError}</p>}
         </div>
-        {couponError && <p className="pdp-panel__coupon-error">{couponError}</p>}
-      </div>
+      )}
 
       {/* Actions */}
       <div className="pdp-panel__actions">
-        <button
-          className="pdp-btn pdp-btn--primary pdp-btn--full"
-          disabled={project.soldOut}
-          onClick={handleBuyNow}
-        >
+        <button className="pdp-btn pdp-btn--primary pdp-btn--full" disabled={project.soldOut} onClick={handleBuyNow}>
           {project.soldOut ? "Sold Out" : "Buy Now"}
         </button>
-        <button
-          className="pdp-btn pdp-btn--outline pdp-btn--full"
-          disabled={project.soldOut}
-          onClick={handleAddToCart}
-        >
+        <button className="pdp-btn pdp-btn--outline pdp-btn--full" disabled={project.soldOut} onClick={handleAddToCart}>
           {added ? (
-            <>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="20 6 9 17 4 12"/>
-              </svg>
-              Added to Cart
-            </>
+            <><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Added!</>
           ) : "Add to Cart"}
         </button>
       </div>
@@ -308,18 +270,16 @@ function PurchasePanel({ project, onAddToCart }) {
       <div className="pdp-panel__includes">
         <h4 className="pdp-panel__includes-title">What's Included</h4>
         <ul className="pdp-panel__includes-list">
-          {project.includes.map((item) => (
+          {(project.includes || []).map((item) => (
             <li key={item}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="pdp-check-icon">
-                <polyline points="20 6 9 17 4 12"/>
-              </svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="pdp-check-icon"><polyline points="20 6 9 17 4 12"/></svg>
               {item}
             </li>
           ))}
         </ul>
       </div>
 
-      {/* Support note */}
+      {/* Support */}
       <p className="pdp-panel__support">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
         24/7 support via WhatsApp &amp; email
@@ -330,8 +290,8 @@ function PurchasePanel({ project, onAddToCart }) {
 
 // ─── Related projects ─────────────────────────────────────────────────────────
 function RelatedProjects({ current }) {
-  const related = PROJECTS
-    .filter((p) => p.id !== current.id && p.category === current.category)
+  const related = getProjects()
+    .filter((p) => p.id !== current.id && p.category === current.category && p.active !== false)
     .slice(0, 3);
 
   if (related.length === 0) return null;
@@ -377,6 +337,7 @@ export default function ProjectDetailPage() {
   const { slug } = useParams();
   const { addToCart } = useCart();
 
+  const PROJECTS = getProjects();
   const project = PROJECTS.find((p) => p.slug === slug);
 
   if (!project) {
@@ -422,6 +383,9 @@ export default function ProjectDetailPage() {
 
             {/* Media gallery */}
             <MediaGallery project={project} />
+
+            {/* Project files & links */}
+            <ProjectFiles files={project.projectFiles} />
 
             {/* Features */}
             <div className="pdp-features">

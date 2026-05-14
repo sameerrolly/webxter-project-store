@@ -2,7 +2,6 @@
 
 .cp-page { padding: 48px 0 64px; }
 .cp-container { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
-
 /* Buttons */
 .cp-btn {
   display: inline-flex; align-items: center; justify-content: center;
@@ -148,8 +147,15 @@
 
 /* Responsive */
 @media (max-width:1024px) { .cp-layout { grid-template-columns:1fr; } .cp-summary { position:static; } }
+@media (max-width:768px) {
+  .cp-page { padding: 32px 0 48px; }
+  .cp-container { padding: 0 16px; }
+  .cp-header { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .cp-steps { font-size: .78rem; }
+}
 @media (max-width:600px) {
-  .cp-item { grid-template-columns:72px 1fr; }
-  .cp-item__right { grid-column:1/-1; flex-direction:row; justify-content:space-between; align-items:center; }
-  .cp-header { flex-direction:column; align-items:flex-start; }
+  .cp-item { grid-template-columns: 72px 1fr; gap: 12px; padding: 14px; }
+  .cp-item__right { grid-column: 1/-1; flex-direction: row; justify-content: space-between; align-items: center; }
+  .cp-item__thumb { width: 72px; height: 56px; }
+  .cp-summary { padding: 20px; }
 }

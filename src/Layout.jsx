@@ -17,9 +17,9 @@ function SiteLogo({ size = "navbar" }) {
   return (
     <a className={`layout-logo layout-logo--${size}`} href="https://webxter.in">
       <video muted autoPlay loop playsInline
-        width={isFooter ? 70 : 50} height={50}>
+        width={45} height={45}>
         <source src="https://www.webxter.in/webxter-preloader.mp4" type="video/mp4" />
-        <img alt="logo" loading="lazy" width={isFooter ? 70 : 50} height={50} decoding="async"
+        <img alt="logo" loading="lazy" width={45} height={45} decoding="async"
           src="https://www.webxter.in/favicon-extra-space.svg" style={{ color: "transparent" }} />
       </video>
       <img
@@ -63,9 +63,9 @@ function MobileSidebar({ open, onClose }) {
         <nav className="layout-sidebar__nav">
           {/* Logo */}
           <a className="layout-sidebar__logo" href="https://webxter.in">
-            <video autoPlay loop playsInline muted width="50" height="50">
+            <video autoPlay loop playsInline muted width="45" height="45">
               <source src="https://www.webxter.in/webxter-preloader.mp4" type="video/mp4" />
-              <img alt="logo" loading="lazy" width="50" height="50" decoding="async"
+              <img alt="logo" loading="lazy" width="45" height="45" decoding="async"
                 src="https://www.webxter.in/favicon-extra-space.svg" style={{ color: "transparent" }} />
             </video>
             <img alt="Webxter" loading="lazy" width="120" height="25" decoding="async"
@@ -82,10 +82,13 @@ function MobileSidebar({ open, onClose }) {
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
               </button>
             </div>
+            <Link to="/student/login" className="layout-sidebar__link" onClick={onClose}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 6 }}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              My Dashboard
+            </Link>
             <a className="layout-sidebar__link" href="https://webxter.in/careers">Careers</a>
             <a className="layout-sidebar__link" href="https://webxter.in/courses">Courses</a>
             <Link className="layout-sidebar__link layout-sidebar__link--active" to="/" onClick={onClose}>Projects</Link>
-            <a className="layout-sidebar__link" href="https://student.webxter.in">Student Portal</a>
             <a className="layout-sidebar__link" href="https://webxter.in/verify-certificate">Verify</a>
             <a className="layout-sidebar__link" href="https://webxter.in/blogs">Blogs</a>
             <a className="layout-sidebar__link" href="https://webxter.in/about">About</a>
@@ -155,6 +158,10 @@ export function Navbar() {
 
           {/* Desktop actions */}
           <div className="layout-navbar__actions">
+            <Link to="/student/login" className="layout-btn layout-btn--ghost layout-btn--dashboard">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              My Dashboard
+            </Link>
             <Link to="/cart" className="layout-navbar__cart" aria-label={`Cart (${cart.length} items)`}>
               <CartIcon />
               {cart.length > 0 && <span className="layout-navbar__cart-count">{cart.length}</span>}
