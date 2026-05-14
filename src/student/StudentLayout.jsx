@@ -3,6 +3,219 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { studentLogout, getStudentSession, getStudentOrders, getStudentTickets } from "./studentStore";
 import "./student.css";
 
+// ─── Chatbot knowledge base ───────────────────────────────────────────────────
+const BOT_NAME = "Webxter AI";
+const QUICK_REPLIES = [
+  "Track my order",
+  "Download project files",
+  "Payment help",
+  "Contact support",
+  "How to submit a ticket?",
+];
+
+function getBotReply(msg) {
+  const m = msg.toLowerCase();
+  if (m.includes("order") || m.includes("track")) {
+    return { text: "You can track all your orders in the **My Orders** section. Completed orders have a Download button. Pending orders are being processed — usually within 24 hrs.", link: { label: "Go to My Orders →", to: "/student/orders" } };
+  }
+  if (m.includes("download") || m.includes("file") || m.includes("source")) {
+    return { text: "Once your order is marked **Completed**, switch to the grid/downloads view in My Orders to access all project files, GitHub links, and documentation.", link: { label: "My Orders →", to: "/student/orders" } };
+  }
+  if (m.includes("payment") || m.includes("paid") || m.includes("refund")) {
+    return { text: "For payment issues or refund requests, please WhatsApp us at **+91-8264796534** or raise a support ticket. We resolve payment queries within 12 hours.", link: { label: "Raise a Ticket →", to: "/student/support" } };
+  }
+  if (m.includes("ticket") || m.includes("support") || m.includes("help") || m.includes("issue")) {
+    return { text: "Head to the **Support** page to raise a ticket. You can also view all your existing tickets there. We respond within 24 hours via email or WhatsApp.", link: { label: "Go to Support →", to: "/student/support" } };
+  }
+  if (m.includes("contact") || m.includes("whatsapp") || m.includes("email") || m.includes("call")) {
+    return { text: "You can reach us via:\n📱 WhatsApp: +91-8264796534\n📧 Email: projects@webxter.in\n\nWe're available Mon–Sat, 9 AM – 8 PM." };
+  }
+  if (m.includes("license") || m.includes("certificate")) {
+    return { text: "You can download your **License Certificate** directly from My Orders — click the License button next to any completed order.", link: { label: "My Orders →", to: "/student/orders" } };
+  }
+  if (m.includes("profile") || m.includes("account") || m.includes("password")) {
+    return { text: "Update your name, college, bio, and profile photo in the **Profile** section.", link: { label: "Go to Profile →", to: "/student/profile" } };
+  }
+  if (m.includes("project") || m.includes("browse") || m.includes("buy") || m.includes("purchase")) {
+    return { text: "Browse all available projects on the main store. Each project includes a live demo, tech stack details, and pricing.", link: { label: "Browse Projects →", to: "/" } };
+  }
+  if (m.includes("hi") || m.includes("hello") || m.includes("hey") || m.includes("hii")) {
+    return { text: `Hey there! 👋 I'm ${BOT_NAME}. I can help you with orders, downloads, payments, and support. What do you need help with?` };
+  }
+  if (m.includes("thank")) {
+    return { text: "You're welcome! 😊 Feel free to ask anything else. I'm here 24/7." };
+  }
+  return { text: "I'm not sure about that, but our support team can help! You can raise a ticket or WhatsApp us at **+91-8264796534**.", link: { label: "Contact Support →", to: "/student/support" } };
+}
+
+// ─── Render bot message text (bold via **) ────────────────────────────────────
+function BotText({ text }) {
+  const parts = text.split(/\*\*(.*?)\*\*/g);
+  return (
+    <span>
+      {parts.map((p, i) =>
+        i % 2 === 1 ? <strong key={i}>{p}</strong> : p.split("\n").map((line, j, arr) => (
+          <span key={`${i}-${j}`}>{line}{j < arr.length - 1 && <br />}</span>
+        ))
+      )}
+    </span>
+  );
+}
+
+// ─── Chatbot widget ───────────────────────────────────────────────────────────
+function ChatBot({ session }) {
+  const navigate = useNavigate();
+  const [open, setOpen]       = useState(false);
+  const [input, setInput]     = useState("");
+  const [showPulse, setShowPulse] = useState(true);
+  const [messages, setMessages] = useState([
+    { from: "bot", text: `Hi ${session?.name?.split(" ")[0] || "there"} 👋 I'm ${BOT_NAME}. How can I help you today?`, id: 0 },
+  ]);
+  const bottomRef = useRef(null);
+  const inputRef  = useRef(null);
+
+  // Hide pulse after first open
+  useEffect(() => { if (open) setShowPulse(false); }, [open]);
+
+  // Scroll to bottom on new message
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  // Focus input when opened
+  useEffect(() => {
+    if (open) setTimeout(() => inputRef.current?.focus(), 120);
+  }, [open]);
+
+  const sendMessage = (text) => {
+    const userMsg = text.trim();
+    if (!userMsg) return;
+    const uid = Date.now();
+    setMessages((m) => [...m, { from: "user", text: userMsg, id: uid }]);
+    setInput("");
+    // Typing delay
+    setTimeout(() => {
+      const reply = getBotReply(userMsg);
+      setMessages((m) => [...m, { from: "bot", ...reply, id: uid + 1 }]);
+    }, 600);
+  };
+
+  const handleKey = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(input); }
+  };
+
+  return (
+    <>
+      {/* FAB */}
+      <button
+        className={`sd-chat-fab${open ? " sd-chat-fab--open" : ""}`}
+        onClick={() => setOpen((o) => !o)}
+        aria-label="Chat with Webxter AI"
+      >
+        {showPulse && <span className="sd-chat-fab__pulse" />}
+        {open ? (
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        ) : (
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            <circle cx="9" cy="10" r="1" fill="currentColor"/>
+            <circle cx="12" cy="10" r="1" fill="currentColor"/>
+            <circle cx="15" cy="10" r="1" fill="currentColor"/>
+          </svg>
+        )}
+      </button>
+
+      {/* Chat window */}
+      {open && (
+        <div className="sd-chat-window">
+          {/* Header */}
+          <div className="sd-chat-header">
+            <div className="sd-chat-header__avatar">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z"/>
+                <path d="M12 8v4l3 3"/>
+              </svg>
+            </div>
+            <div>
+              <div className="sd-chat-header__name">{BOT_NAME}</div>
+              <div className="sd-chat-header__status">
+                <span className="sd-chat-header__dot" />
+                Online · replies instantly
+              </div>
+            </div>
+            <button className="sd-chat-header__close" onClick={() => setOpen(false)} aria-label="Close chat">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+
+          {/* Messages */}
+          <div className="sd-chat-messages">
+            {messages.map((msg) => (
+              <div key={msg.id} className={`sd-chat-msg sd-chat-msg--${msg.from}`}>
+                {msg.from === "bot" && (
+                  <div className="sd-chat-msg__avatar">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z"/>
+                      <path d="M12 8v4l3 3"/>
+                    </svg>
+                  </div>
+                )}
+                <div className="sd-chat-msg__bubble">
+                  <BotText text={msg.text} />
+                  {msg.link && (
+                    <button
+                      className="sd-chat-msg__link"
+                      onClick={() => { navigate(msg.link.to); setOpen(false); }}
+                    >
+                      {msg.link.label}
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+            <div ref={bottomRef} />
+          </div>
+
+          {/* Quick replies */}
+          <div className="sd-chat-quick">
+            {QUICK_REPLIES.map((q) => (
+              <button key={q} className="sd-chat-quick__btn" onClick={() => sendMessage(q)}>{q}</button>
+            ))}
+          </div>
+
+          {/* Input */}
+          <div className="sd-chat-input">
+            <input
+              ref={inputRef}
+              className="sd-chat-input__field"
+              placeholder="Type a message…"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKey}
+              maxLength={300}
+            />
+            <button
+              className="sd-chat-input__send"
+              onClick={() => sendMessage(input)}
+              disabled={!input.trim()}
+              aria-label="Send"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13"/>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 const NAV = [
   {
     label: "Overview", path: "/student/dashboard",
@@ -236,6 +449,9 @@ export default function StudentLayout({ children, title }) {
         {/* Page content */}
         <div className="sd-content">{children}</div>
       </div>
+
+      {/* ── Floating chatbot ── */}
+      <ChatBot session={session} />
     </div>
   );
 }
