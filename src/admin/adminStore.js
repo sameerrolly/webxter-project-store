@@ -389,6 +389,22 @@ export function validateCoupon(code, orderTotal) {
   return { valid: true, coupon, discount };
 }
 
+// ─── Get all registered students (for coupon assignment) ─────────────────────
+export function getAllStudents() {
+  try {
+    const DEMO = [
+      { email: "rahul@example.com", name: "Rahul Sharma", college: "IIT Delhi" },
+      { email: "priya@example.com", name: "Priya Patel",  college: "NIT Surat" },
+      { email: "amit@example.com",  name: "Amit Kumar",   college: "VIT Vellore" },
+    ];
+    const raw = localStorage.getItem("wx_student_accounts");
+    const stored = raw ? JSON.parse(raw) : [];
+    const storedEmails = stored.map((a) => a.email.toLowerCase());
+    const demosToAdd = DEMO.filter((d) => !storedEmails.includes(d.email.toLowerCase()));
+    return [...stored.map((a) => ({ email: a.email, name: a.name, college: a.college || "" })), ...demosToAdd];
+  } catch { return []; }
+}
+
 export function incrementCouponUsage(code) {
   const coupons = getCoupons().map((c) =>
     c.code === code.toUpperCase().trim() ? { ...c, usedCount: (c.usedCount || 0) + 1 } : c

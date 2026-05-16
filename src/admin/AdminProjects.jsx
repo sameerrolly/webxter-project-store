@@ -51,10 +51,15 @@ const FILE_TYPES = [
 ];
 
 function MediaManager({ media, demoVideo, onMediaChange, onVideoChange }) {
-  const [urlInput, setUrlInput] = useState("");
+  const [urlInput, setUrlInput]       = useState("");
   const [captionInput, setCaptionInput] = useState("");
-  const [typeInput, setTypeInput] = useState("image");
+  const [typeInput, setTypeInput]     = useState("image");
+  const [uploading, setUploading]     = useState(false);
+  const [dragIdx, setDragIdx]         = useState(null);
+  const [dragOverIdx, setDragOverIdx] = useState(null);
+  const fileInputRef = useRef(null);
 
+  // ── URL-based add ──
   const addMedia = () => {
     const u = urlInput.trim();
     if (!u) return;
@@ -63,15 +68,76 @@ function MediaManager({ media, demoVideo, onMediaChange, onVideoChange }) {
     setUrlInput(""); setCaptionInput("");
   };
 
+  // ── Direct file upload → base64 ──
+  const handleFileUpload = (e) => {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+    setUploading(true);
+    let loaded = 0;
+    const newItems = [];
+    files.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const isVideo = file.type.startsWith("video/");
+        newItems.push({
+          type: isVideo ? "video" : "image",
+          url: ev.target.result,
+          caption: file.name.replace(/\.[^.]+$/, ""),
+          featured: media.length === 0 && newItems.length === 0,
+        });
+        loaded++;
+        if (loaded === files.length) {
+          onMediaChange([...media, ...newItems]);
+          setUploading(false);
+          if (fileInputRef.current) fileInputRef.current.value = "";
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // ── Set featured ──
   const setFeatured = (idx) => {
     onMediaChange(media.map((m, i) => ({ ...m, featured: i === idx })));
   };
 
+  // ── Remove ──
   const removeMedia = (idx) => {
     const updated = media.filter((_, i) => i !== idx);
-    // if removed was featured, make first featured
-    if (media[idx]?.featured && updated.length > 0) updated[0].featured = true;
-    onMediaChange(updated);
+    onMediaChange(updated.length > 0 ? syncFeatured(updated) : updated);
+  };
+
+  // ── Drag-to-reorder handlers ──
+  const handleDragStart = (e, idx) => {
+    setDragIdx(idx);
+    e.dataTransfer.effectAllowed = "move";
+  };
+  const handleDragOver = (e, idx) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverIdx(idx);
+  };
+  // ── Helper: always mark index 0 as featured after any reorder ──
+  const syncFeatured = (arr) => arr.map((m, i) => ({ ...m, featured: i === 0 }));
+
+  const handleDrop = (e, idx) => {
+    e.preventDefault();
+    if (dragIdx === null || dragIdx === idx) { setDragIdx(null); setDragOverIdx(null); return; }
+    const reordered = [...media];
+    const [moved] = reordered.splice(dragIdx, 1);
+    reordered.splice(idx, 0, moved);
+    onMediaChange(syncFeatured(reordered));
+    setDragIdx(null); setDragOverIdx(null);
+  };
+  const handleDragEnd = () => { setDragIdx(null); setDragOverIdx(null); };
+
+  // ── Move left/right buttons (for touch/mobile) ──
+  const moveItem = (idx, dir) => {
+    const target = idx + dir;
+    if (target < 0 || target >= media.length) return;
+    const reordered = [...media];
+    [reordered[idx], reordered[target]] = [reordered[target], reordered[idx]];
+    onMediaChange(syncFeatured(reordered));
   };
 
   // detect YouTube embed
@@ -99,45 +165,132 @@ function MediaManager({ media, demoVideo, onMediaChange, onVideoChange }) {
         )}
       </div>
 
-      {/* Media gallery */}
-      <label className="adm-field__label" style={{ marginBottom: 8, display: "block" }}>
-        Screenshots / Images
-        <span style={{ fontWeight: 400, color: "#94a3b8", marginLeft: 6 }}>— click ★ to set as featured</span>
-      </label>
-
-      <div className="adm-screenshots" style={{ marginBottom: 12 }}>
-        {media.map((item, i) => (
-          <div key={i} style={{ position: "relative", width: 110, flexShrink: 0 }}>
-            <div style={{ width: 110, height: 76, borderRadius: 8, overflow: "hidden", border: `2px solid ${item.featured ? "#009fd4" : "#e2e8f0"}`, position: "relative" }}>
-              {item.type === "video"
-                ? <div style={{ width: "100%", height: "100%", background: "#0f172a", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
-                  </div>
-                : <img src={item.url} alt={item.caption || `Media ${i+1}`} style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={(e) => { e.target.src = `https://picsum.photos/seed/${i}/110/76`; }} />
-              }
-              {item.featured && (
-                <div style={{ position: "absolute", top: 3, left: 3, background: "linear-gradient(45deg,#009fd4,#ff6eff)", color: "#fff", borderRadius: 4, padding: "1px 6px", fontSize: ".65rem", fontWeight: 700 }}>FEATURED</div>
-              )}
-            </div>
-            <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
-              <button type="button" title="Set as featured"
-                onClick={() => setFeatured(i)}
-                style={{ flex: 1, background: item.featured ? "linear-gradient(45deg,#009fd4,#ff6eff)" : "#f1f5f9", color: item.featured ? "#fff" : "#64748b", border: "none", borderRadius: 5, padding: "3px 0", fontSize: ".68rem", cursor: "pointer", fontWeight: 600 }}>
-                ★
-              </button>
-              <button type="button" title="Remove"
-                onClick={() => removeMedia(i)}
-                style={{ flex: 1, background: "rgba(239,68,68,.1)", color: "#ef4444", border: "none", borderRadius: 5, padding: "3px 0", fontSize: ".68rem", cursor: "pointer" }}>
-                ✕
-              </button>
-            </div>
-            {item.caption && <div style={{ fontSize: ".65rem", color: "#94a3b8", marginTop: 2, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.caption}</div>}
+      {/* Upload zone */}
+      <div
+        className="adm-upload-zone"
+        onClick={() => fileInputRef.current?.click()}
+        onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add("adm-upload-zone--over"); }}
+        onDragLeave={(e) => e.currentTarget.classList.remove("adm-upload-zone--over")}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.currentTarget.classList.remove("adm-upload-zone--over");
+          const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith("image/") || f.type.startsWith("video/"));
+          if (files.length) {
+            const fakeEvent = { target: { files, result: null } };
+            // reuse handler via synthetic approach
+            setUploading(true);
+            let loaded = 0;
+            const newItems = [];
+            files.forEach((file) => {
+              const reader = new FileReader();
+              reader.onload = (ev) => {
+                newItems.push({ type: file.type.startsWith("video/") ? "video" : "image", url: ev.target.result, caption: file.name.replace(/\.[^.]+$/, ""), featured: media.length === 0 && newItems.length === 0 });
+                loaded++;
+                if (loaded === files.length) { onMediaChange([...media, ...newItems]); setUploading(false); }
+              };
+              reader.readAsDataURL(file);
+            });
+          }
+        }}
+      >
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,video/*"
+          multiple
+          style={{ display: "none" }}
+          onChange={handleFileUpload}
+        />
+        {uploading ? (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+            <div className="adm-upload-zone__spinner" />
+            <span style={{ fontSize: ".82rem", color: "#64748b" }}>Uploading…</span>
           </div>
-        ))}
+        ) : (
+          <>
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: "#009fd4" }}>
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            <div style={{ fontWeight: 600, fontSize: ".875rem", color: "#0f172a" }}>Click or drag & drop to upload</div>
+            <div style={{ fontSize: ".75rem", color: "#94a3b8" }}>Images (JPG, PNG, WebP) or Videos (MP4, WebM) · Multiple files supported</div>
+          </>
+        )}
       </div>
 
-      {/* Add media */}
-      <div style={{ background: "#f8f9fb", border: "1px solid #e2e8f0", borderRadius: 10, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+      {/* Media gallery */}
+      <label className="adm-field__label" style={{ margin: "16px 0 8px", display: "block" }}>
+        Media Gallery
+        <span style={{ fontWeight: 400, color: "#94a3b8", marginLeft: 6 }}>— drag to reorder · ★ to set featured · first item is featured by default</span>
+      </label>
+
+      {media.length === 0 ? (
+        <div style={{ padding: "20px", textAlign: "center", color: "#94a3b8", fontSize: ".82rem", background: "#f8f9fb", borderRadius: 10, border: "1px dashed #e2e8f0" }}>
+          No media added yet. Upload files above or add a URL below.
+        </div>
+      ) : (
+        <div className="adm-media-grid">
+          {media.map((item, i) => (
+            <div
+              key={i}
+              className={`adm-media-item${item.featured ? " adm-media-item--featured" : ""}${dragOverIdx === i ? " adm-media-item--dragover" : ""}${dragIdx === i ? " adm-media-item--dragging" : ""}`}
+              draggable
+              onDragStart={(e) => handleDragStart(e, i)}
+              onDragOver={(e) => handleDragOver(e, i)}
+              onDrop={(e) => handleDrop(e, i)}
+              onDragEnd={handleDragEnd}
+            >
+              {/* Thumbnail */}
+              <div className="adm-media-item__thumb">
+                {item.type === "video"
+                  ? <div className="adm-media-item__video-placeholder">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+                      <span>Video</span>
+                    </div>
+                  : <img src={item.url} alt={item.caption || `Media ${i + 1}`}
+                      onError={(e) => { e.target.src = `https://picsum.photos/seed/${i}/220/140`; }} />
+                }
+                {item.featured && <div className="adm-media-item__badge">★ Featured</div>}
+                <div className="adm-media-item__drag-hint">⠿ drag</div>
+              </div>
+
+              {/* Caption */}
+              {item.caption && (
+                <div className="adm-media-item__caption">{item.caption}</div>
+              )}
+
+              {/* Controls */}
+              <div className="adm-media-item__controls">
+                <button type="button" title="Move left" disabled={i === 0}
+                  onClick={() => moveItem(i, -1)}
+                  className="adm-media-item__ctrl adm-media-item__ctrl--move">
+                  ‹
+                </button>
+                <button type="button" title="Set as featured"
+                  onClick={() => setFeatured(i)}
+                  className={`adm-media-item__ctrl${item.featured ? " adm-media-item__ctrl--active" : ""}`}>
+                  ★
+                </button>
+                <button type="button" title="Remove"
+                  onClick={() => removeMedia(i)}
+                  className="adm-media-item__ctrl adm-media-item__ctrl--remove">
+                  ✕
+                </button>
+                <button type="button" title="Move right" disabled={i === media.length - 1}
+                  onClick={() => moveItem(i, 1)}
+                  className="adm-media-item__ctrl adm-media-item__ctrl--move">
+                  ›
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add via URL */}
+      <div style={{ background: "#f8f9fb", border: "1px solid #e2e8f0", borderRadius: 10, padding: 14, display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
+        <div style={{ fontSize: ".78rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: ".4px" }}>Or add via URL</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <select className="adm-field__input" style={{ width: "auto", flex: "0 0 120px" }} value={typeInput} onChange={(e) => setTypeInput(e.target.value)}>
             <option value="image">Image</option>
@@ -449,6 +602,7 @@ function ProjectForm({ initial, onSave, onCancel, isEdit }) {
 
 // ─── Projects List ────────────────────────────────────────────────────────────
 export function AdminProjectsList() {
+  const navigate = useNavigate();
   const [projects, setProjects] = useState(() => getProjects());
   const [search, setSearch] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -505,7 +659,7 @@ export function AdminProjectsList() {
                   </div>
                 </td></tr>
               ) : filtered.map((p) => (
-                <tr key={p.id}>
+                <tr key={p.id} style={{ cursor: "pointer" }} onClick={() => navigate(`/admin/projects/edit/${p.id}`)}>
                   <td>
                     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                       <div style={{ width: 48, height: 36, borderRadius: 6, overflow: "hidden", border: "1px solid #e2e8f0", flexShrink: 0 }}>
@@ -535,7 +689,7 @@ export function AdminProjectsList() {
                   </td>
                   <td>
                     <label className="adm-toggle">
-                      <div className={`adm-toggle__track ${p.active ? "adm-toggle__track--on" : ""}`} onClick={() => toggleActive(p.id, !p.active)}>
+                      <div className={`adm-toggle__track ${p.active ? "adm-toggle__track--on" : ""}`} onClick={(e) => { e.stopPropagation(); toggleActive(p.id, !p.active); }}>
                         <div className="adm-toggle__thumb" />
                       </div>
                     </label>
@@ -545,7 +699,7 @@ export function AdminProjectsList() {
                       <Link to={`/admin/projects/edit/${p.id}`} className="adm-btn adm-btn--ghost adm-btn--sm adm-btn--icon" title="Edit">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                       </Link>
-                      <button className="adm-btn adm-btn--danger adm-btn--sm adm-btn--icon" title="Delete" onClick={() => setConfirmDelete(p.id)}>
+                      <button className="adm-btn adm-btn--danger adm-btn--sm adm-btn--icon" title="Delete" onClick={(e) => { e.stopPropagation(); setConfirmDelete(p.id); }}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
                       </button>
                     </div>

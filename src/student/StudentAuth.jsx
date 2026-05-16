@@ -292,8 +292,8 @@ function RegisterForm({ onSwitch }) {
               />
               <span style={{
                 position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
-                fontSize: ".7rem", color: form.phone.length === 10 ? "#22c55e" : "#94a3b8",
-                fontWeight: 600, pointerEvents: "none"
+                fontSize: "1px", color: form.phone.length === 10 ? "#fdfdfdff" : "#94a3b8",
+                fontWeight: 600, pointerEvents: "none", display: "none"
               }}>
                 {form.phone.length}/10
               </span>

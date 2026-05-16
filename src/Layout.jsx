@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useCart } from "./CartContext";
+import { isStudentLoggedIn, studentLogout } from "./student/studentStore";
 import "./Layout.css";
 
 // ─── Shared SVG icons ─────────────────────────────────────────────────────────
@@ -8,6 +9,22 @@ const CartIcon = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
     <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+  </svg>
+);
+
+const SignInIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+    <polyline points="10 17 15 12 10 7"/>
+    <line x1="15" y1="12" x2="3" y2="12"/>
+  </svg>
+);
+
+const DashboardIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+    <polyline points="16 17 21 12 16 7"/>
+    <line x1="21" y1="12" x2="9" y2="12"/>
   </svg>
 );
 
@@ -42,7 +59,7 @@ function SiteLogo({ size = "navbar" }) {
 }
 
 // ─── Mobile Sidebar ───────────────────────────────────────────────────────────
-function MobileSidebar({ open, onClose }) {
+function MobileSidebar({ open, onClose, loggedIn, onLogout }) {
   React.useEffect(() => {
     document.body.style.overflow = open ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
@@ -76,16 +93,12 @@ function MobileSidebar({ open, onClose }) {
 
           {/* Links */}
           <div className="layout-sidebar__links">
-            <div className="layout-sidebar__dropdown-row">
-              <button className="layout-sidebar__dropdown-btn">
-                Services
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-              </button>
-            </div>
-            <Link to="/student/login" className="layout-sidebar__link" onClick={onClose}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 6 }}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-              My Dashboard
-            </Link>
+            {loggedIn && (
+              <Link to="/student/dashboard" className="layout-sidebar__link" onClick={onClose}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 6 }}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                My Dashboard
+              </Link>
+            )}
             <a className="layout-sidebar__link" href="https://webxter.in/careers">Careers</a>
             <a className="layout-sidebar__link" href="https://webxter.in/courses">Courses</a>
             <Link className="layout-sidebar__link layout-sidebar__link--active" to="/" onClick={onClose}>Projects</Link>
@@ -102,10 +115,18 @@ function MobileSidebar({ open, onClose }) {
 
           {/* Actions */}
           <div className="layout-sidebar__actions">
-            <button className="layout-sidebar__btn-outline">
-              <a href="https://webxter.in/login">Sign In</a>
-            </button>
-            <button className="layout-sidebar__btn-primary">Apply Now</button>
+            {loggedIn ? (
+              <button
+                className="layout-sidebar__btn-gradient"
+                onClick={() => { onLogout(); onClose(); }}
+              >
+                Logout
+              </button>
+            ) : (
+              <a href="/student/login" className="layout-sidebar__btn-gradient">
+                Sign In
+              </a>
+            )}
           </div>
         </nav>
 
@@ -125,8 +146,15 @@ export function Navbar() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { cart } = useCart();
   const location = useLocation();
+  const navigate = useNavigate();
+  const loggedIn = isStudentLoggedIn();
 
   const isActive = (path) => location.pathname === path;
+
+  function handleLogout() {
+    studentLogout();
+    navigate("/");
+  }
 
   return (
     <>
@@ -151,23 +179,33 @@ export function Navbar() {
           {/* Desktop links */}
           <div className="layout-navbar__links">
             <a href="https://webxter.in/courses" className={isActive("/courses") ? "layout-active" : ""}>Courses</a>
+            <a href="https://webxter.in/careers">Careers</a>
+            <a href="https://webxter.in/verify">Verify</a>
             <Link to="/" className={isActive("/") ? "layout-active" : ""}>Projects</Link>
             <a href="https://webxter.in/about">About</a>
             <a href="https://webxter.in/contact">Contact</a>
+            {loggedIn && <Link to="/student/dashboard" className={isActive("/student/dashboard") ? "layout-active" : ""}>Dashboard</Link>}
+
           </div>
 
           {/* Desktop actions */}
           <div className="layout-navbar__actions">
-            <Link to="/student/login" className="layout-btn layout-btn--ghost layout-btn--dashboard">
+            {/* <Link to="/student/login" className="layout-btn layout-btn--ghost layout-btn--dashboard">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
               My Dashboard
-            </Link>
+            </Link> */}
             <Link to="/cart" className="layout-navbar__cart" aria-label={`Cart (${cart.length} items)`}>
               <CartIcon />
               {cart.length > 0 && <span className="layout-navbar__cart-count">{cart.length}</span>}
             </Link>
-            <a href="https://webxter.in/login" className="layout-btn layout-btn--ghost">Sign In</a>
-            <a href="https://webxter.in/contact" className="layout-btn layout-btn--primary">Get Quote</a>
+            {loggedIn
+              ? <button onClick={handleLogout} className="layout-navbar__cart" aria-label="Logout" title="Logout">
+                  <DashboardIcon />
+                </button>
+              : <a href="/student/login" className="layout-navbar__cart" aria-label="Sign In" title="Sign In">
+                  <SignInIcon />
+                </a>
+            }
           </div>
 
           {/* Mobile actions */}
@@ -187,7 +225,7 @@ export function Navbar() {
         </div>
       </nav>
 
-      <MobileSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <MobileSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} loggedIn={loggedIn} onLogout={handleLogout} />
     </>
   );
 }

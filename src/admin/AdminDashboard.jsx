@@ -1,13 +1,16 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import AdminLayout from "./AdminLayout";
-import { getAnalytics, getOrders } from "./adminStore";
+import { getAnalytics, getOrders, updateOrderStatus } from "./adminStore";
 
 const STATUS_BADGE = {
   completed: "adm-badge--green",
   pending:   "adm-badge--yellow",
   cancelled: "adm-badge--red",
 };
+
+const PAY_LABEL = { upi: "UPI / GPay", whatsapp: "WhatsApp", bank: "Bank Transfer" };
+const STATUS_OPTIONS = ["pending", "completed", "cancelled"];
 
 function StatCard({ label, value, icon, change, changeDown }) {
   return (
@@ -36,7 +39,15 @@ function BarChart({ data }) {
 
 export default function AdminDashboard() {
   const analytics = useMemo(() => getAnalytics(), []);
-  const recentOrders = useMemo(() => getOrders().slice(0, 5), []);
+  const [orders, setOrders] = useState(() => getOrders());
+  const recentOrders = orders.slice(0, 5);
+  const [selected, setSelected] = useState(null);
+
+  const handleStatusChange = (id, status) => {
+    updateOrderStatus(id, status);
+    setOrders(getOrders());
+    if (selected?.id === id) setSelected((s) => ({ ...s, status }));
+  };
 
   return (
     <AdminLayout>
@@ -132,7 +143,7 @@ export default function AdminDashboard() {
             </thead>
             <tbody>
               {recentOrders.map((o) => (
-                <tr key={o.id}>
+                <tr key={o.id} style={{ cursor: "pointer" }} onClick={() => setSelected(o)}>
                   <td><span style={{ fontWeight: 600, color: "#009fd4" }}>{o.id}</span></td>
                   <td>
                     <div style={{ fontWeight: 600, fontSize: ".875rem" }}>{o.customer}</div>
@@ -148,6 +159,61 @@ export default function AdminDashboard() {
           </table>
         </div>
       </div>
+
+      {/* Order detail modal */}
+      {selected && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}
+          onClick={() => setSelected(null)}>
+          <div style={{ background: "#fff", borderRadius: 18, padding: 32, maxWidth: 480, width: "100%", boxShadow: "0 20px 60px rgba(0,0,0,.2)", maxHeight: "90vh", overflowY: "auto" }}
+            onClick={(e) => e.stopPropagation()}>
+
+            {/* Header */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: "1.1rem", color: "#0f172a" }}>{selected.id}</div>
+                <div style={{ fontSize: ".8rem", color: "#94a3b8", marginTop: 2 }}>{selected.date}</div>
+              </div>
+              <button onClick={() => setSelected(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", fontSize: "1.4rem", lineHeight: 1 }}>×</button>
+            </div>
+
+            {/* Details */}
+            {[
+              ["Customer", selected.customer],
+              ["Email",    selected.email],
+              ["Phone",    selected.phone || "—"],
+              ["College",  selected.college || "—"],
+              ["Project",  selected.project],
+              ["Amount",   `₹${selected.amount.toLocaleString("en-IN")}`],
+              ["Payment",  PAY_LABEL[selected.payMethod] || selected.payMethod],
+            ].map(([k, v]) => (
+              <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #f1f5f9", fontSize: ".875rem" }}>
+                <span style={{ color: "#64748b", fontWeight: 500 }}>{k}</span>
+                <span style={{ color: "#0f172a", fontWeight: 600, textAlign: "right", maxWidth: "60%" }}>{v}</span>
+              </div>
+            ))}
+
+            {/* Status badge */}
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #f1f5f9", fontSize: ".875rem" }}>
+              <span style={{ color: "#64748b", fontWeight: 500 }}>Status</span>
+              <span className={`adm-badge ${STATUS_BADGE[selected.status] || "adm-badge--gray"}`} style={{ textTransform: "capitalize" }}>{selected.status}</span>
+            </div>
+
+            {/* Status change */}
+            <div style={{ marginTop: 20 }}>
+              <div style={{ fontSize: ".78rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: ".4px", marginBottom: 10 }}>Update Status</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                {STATUS_OPTIONS.map((s) => (
+                  <button key={s} onClick={() => handleStatusChange(selected.id, s)}
+                    className={`adm-btn adm-btn--sm ${selected.status === s ? "adm-btn--primary" : "adm-btn--ghost"}`}
+                    style={{ textTransform: "capitalize", flex: 1 }}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </AdminLayout>
   );
 }

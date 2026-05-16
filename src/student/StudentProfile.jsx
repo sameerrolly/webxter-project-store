@@ -227,7 +227,7 @@ export default function StudentProfile() {
                   <span style={{
                     position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
                     fontSize: ".7rem", color: (profile.phone?.length || 0) === 10 ? "#22c55e" : "#94a3b8",
-                    fontWeight: 600, pointerEvents: "none"
+                    fontWeight: 600, pointerEvents: "none" , display: "none"
                   }}>
                     {profile.phone?.length || 0}/10
                   </span>

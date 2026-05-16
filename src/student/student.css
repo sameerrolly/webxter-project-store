@@ -802,7 +802,7 @@ textarea.sd-field__input { resize: vertical; min-height: 80px; }
 .sd-notif__item-date  { font-size: .7rem; color: var(--sd-text-muted); margin-top: 2px; }
 
 @media (max-width: 480px) {
-  .sd-notif__dropdown { width: calc(100vw - 24px); right: -8px; }
+  .sd-notif__dropdown {   right: -45px; }
 }
 
 /* ── Responsive ── */
