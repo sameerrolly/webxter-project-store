@@ -1,12 +1,14 @@
 import React, { useState } from "react";
 import StudentLayout from "./StudentLayout";
-import { getStudentSession, getStudentTickets, addStudentTicket } from "./studentStore";
+import { getStudentTickets, addStudentTicket } from "./studentStore";
+import { getStoredUser } from "./StudentApi";
 
 const CATEGORIES = ["Project Files", "Order Status", "Payment Issue", "Technical Help", "Refund Request", "Other"];
 const STATUS_BADGE = { open: "sd-badge--yellow", resolved: "sd-badge--green", closed: "sd-badge--gray" };
 
 export default function StudentSupport() {
-  const session = getStudentSession();
+  const user = getStoredUser();
+  const session = { email: user?.email || "", name: [user?.first_name, user?.last_name].filter(Boolean).join(" ") || user?.email || "" };
   const [tickets, setTickets] = useState(() => getStudentTickets(session?.email || ""));
   const [view, setView] = useState("list"); // "list" | "new"
   const [form, setForm] = useState({ subject: "", category: "", message: "" });

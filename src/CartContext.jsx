@@ -1,44 +1,74 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 
-const STORAGE_KEY = "webxter_cart";
+// ─── Per-user storage key ─────────────────────────────────────────────────────
+function getCartKey() {
+  try {
+    const raw = localStorage.getItem("wx_user");
+    if (raw) {
+      const user = JSON.parse(raw);
+      if (user?.email) return `webxter_cart_${user.email.toLowerCase()}`;
+    }
+  } catch {}
+  return "webxter_cart_guest";
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-function loadCart() {
+function loadCart(key) {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(key);
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
   }
 }
 
-function saveCart(cart) {
+function saveCart(key, cart) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(cart));
-  } catch {
-    // storage full or unavailable — fail silently
-  }
+    localStorage.setItem(key, JSON.stringify(cart));
+  } catch {}
 }
 
 // ─── Context ──────────────────────────────────────────────────────────────────
 const CartContext = createContext(null);
 
 export function CartProvider({ children }) {
-  // initialise from localStorage so cart survives refresh
-  const [cart, setCart] = useState(() => loadCart());
-  const [toast, setToast] = useState(null);
+  const [cartKey, setCartKey] = useState(() => getCartKey());
+  const [cart, setCart]       = useState(() => loadCart(getCartKey()));
+  const [toast, setToast]     = useState(null);
 
-  // keep localStorage in sync whenever cart changes
+  // Persist cart whenever it changes
   useEffect(() => {
-    saveCart(cart);
-  }, [cart]);
+    saveCart(cartKey, cart);
+  }, [cart, cartKey]);
+
+  // When wx_user changes (login / logout / register) — switch to the new
+  // user-scoped cart WITHOUT reloading the page.
+  // This fires for both same-tab (StorageEvent dispatched manually in StudentApi)
+  // and cross-tab (native storage event).
+  useEffect(() => {
+    const handleStorage = (e) => {
+      if (e.key !== "wx_user") return;
+
+      const newKey = getCartKey();
+      if (newKey === cartKey) return; // same user, nothing to do
+
+      // Switch cart to the new user's key — no reload needed
+      setCartKey(newKey);
+      setCart(loadCart(newKey));
+    };
+
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, [cartKey]);
 
   const addToCart = useCallback((project) => {
+    // Guard: only logged-in users can add to cart
+    if (!getCartKey().includes("@")) {
+      window.dispatchEvent(new CustomEvent("wx-login-required"));
+      return;
+    }
     setCart((prev) => {
-      if (prev.find((p) => p.id === project.id)) {
-        // already in cart — just show toast, don't duplicate
-        return prev;
-      }
+      if (prev.find((p) => p.id === project.id)) return prev;
       return [...prev, project];
     });
     setToast(`"${project.title}" added to cart!`);
@@ -49,11 +79,10 @@ export function CartProvider({ children }) {
     setCart((prev) => prev.filter((p) => p.id !== id));
   }, []);
 
-  // clearCart is called after a successful order — wipes localStorage too
   const clearCart = useCallback(() => {
     setCart([]);
-    try { localStorage.removeItem(STORAGE_KEY); } catch {}
-  }, []);
+    try { localStorage.removeItem(cartKey); } catch {}
+  }, [cartKey]);
 
   const total = cart.reduce((sum, item) => sum + item.price, 0);
 

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { studentLogin } from "./studentStore";
+// import { studentLogin } from "./studentStore";
+import { studentLoginApi } from "./StudentApi";
 import "./student.css";
 
 export default function StudentLogin() {
@@ -9,18 +10,32 @@ export default function StudentLogin() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!email.trim()) { setError("Please enter your email address."); return; }
-    setLoading(true); setError("");
-    setTimeout(() => {
-      const result = studentLogin(email.trim());
-      setLoading(false);
-      if (result.success) navigate("/student/dashboard");
-      else setError(result.error);
-    }, 600);
-  };
+  // {env}/api/v1/auth/register/
 
+  // const handleSubmit = (e) => {
+  //   e.preventDefault();
+  //   if (!email.trim()) { setError("Please enter your email address."); return; }
+  //   setLoading(true); setError("");
+  //   setTimeout(() => {
+  //     const result = studentLogin(email.trim());
+  //     setLoading(false);
+  //     if (result.success) navigate("/student/dashboard");
+  //     else setError(result.error);
+  //   }, 600);
+  // };
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  if (!email.trim()) { setError("Please enter your email address."); return; }
+  setLoading(true); setError("");
+  try {
+    await studentLoginApi(email.trim());
+    navigate("/student/dashboard");
+  } catch (err) {
+    setError(err.message || "Something went wrong. Try again.");
+  } finally {
+    setLoading(false);
+  }
+};
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg,#f0faff 0%,#fdf0ff 100%)", padding: 24, fontFamily: "'Inter','Segoe UI',system-ui,sans-serif" }}>
       <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 20, padding: "40px 36px", width: "100%", maxWidth: 420, boxShadow: "0 8px 40px rgba(0,0,0,.1)" }}>
@@ -41,7 +56,7 @@ export default function StudentLogin() {
           Enter the email you used when placing your order to access your dashboard.
         </p>
 
-        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }} noValidate>
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }} noValidate> 
           <div className="sd-field">
             <label className="sd-field__label" htmlFor="email">Email Address</label>
             <input id="email" type="email" className="sd-field__input"

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { studentLogout, getStudentSession, getStudentOrders, getStudentTickets } from "./studentStore";
+import { studentLogoutApi, getStoredUser } from "./StudentApi";
+import { getStudentTickets } from "./studentStore";
 import "./student.css";
 
 // ─── Chatbot knowledge base ───────────────────────────────────────────────────
@@ -69,7 +70,7 @@ function ChatBot({ session }) {
   const [input, setInput]     = useState("");
   const [showPulse, setShowPulse] = useState(true);
   const [messages, setMessages] = useState([
-    { from: "bot", text: `Hi ${session?.name?.split(" ")[0] || "there"} 👋 I'm ${BOT_NAME}. How can I help you today?`, id: 0 },
+      { from: "bot", text: `Hi ${session?.first_name || session?.name?.split(" ")[0] || "there"} 👋 I'm ${BOT_NAME}. How can I help you today?`, id: 0 },
   ]);
   const bottomRef = useRef(null);
   const inputRef  = useRef(null);
@@ -216,6 +217,59 @@ function ChatBot({ session }) {
   );
 }
 
+// ─── Logout Confirmation Modal ────────────────────────────────────────────────
+function LogoutModal({ onConfirm, onCancel }) {
+  useEffect(() => {
+    const h = (e) => { if (e.key === "Escape") onCancel(); };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [onCancel]);
+
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}
+      onClick={onCancel}
+      aria-modal="true"
+      role="dialog"
+      aria-labelledby="sd-logout-title"
+    >
+      <div style={{ position: "absolute", inset: 0, background: "rgba(15,23,42,0.55)", backdropFilter: "blur(4px)" }} />
+      <div
+        style={{ position: "relative", background: "#fff", borderRadius: 20, padding: "32px 28px", width: "100%", maxWidth: 380, boxShadow: "0 20px 60px rgba(0,0,0,.18)", textAlign: "center", fontFamily: "'Inter','Segoe UI',system-ui,sans-serif" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ width: 64, height: 64, borderRadius: "50%", background: "linear-gradient(135deg,#fff1f2,#fef2f2)", border: "2px solid #fecaca", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px", color: "#ef4444" }}>
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+        </div>
+        <h2 id="sd-logout-title" style={{ fontSize: "1.2rem", fontWeight: 800, color: "#0f172a", marginBottom: 8 }}>Sign out?</h2>
+        <p style={{ fontSize: ".875rem", color: "#64748b", marginBottom: 28, lineHeight: 1.6 }}>
+          You'll be signed out of your student dashboard. Any unsaved changes will be lost.
+        </p>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button
+            onClick={onCancel}
+            style={{ flex: 1, padding: "11px", borderRadius: 10, border: "1.5px solid #e2e8f0", background: "#fff", color: "#334155", fontWeight: 600, fontSize: ".9rem", cursor: "pointer", fontFamily: "inherit", transition: "border-color .15s" }}
+            onMouseEnter={(e) => e.currentTarget.style.borderColor = "#009fd4"}
+            onMouseLeave={(e) => e.currentTarget.style.borderColor = "#e2e8f0"}
+          >
+            Stay
+          </button>
+          <button
+            onClick={onConfirm}
+            style={{ flex: 1, padding: "11px", borderRadius: 10, border: "none", background: "linear-gradient(135deg,#ef4444,#dc2626)", color: "#fff", fontWeight: 700, fontSize: ".9rem", cursor: "pointer", fontFamily: "inherit", boxShadow: "0 4px 12px rgba(239,68,68,.3)" }}
+          >
+            Yes, Sign Out
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const NAV = [
   {
     label: "Overview", path: "/student/dashboard",
@@ -238,24 +292,36 @@ const NAV = [
 export default function StudentLayout({ children, title }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const session = getStudentSession();
+
+  // Keep user in state so it reflects the token written during login/register
+  const [session, setSession] = useState(() => getStoredUser());
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
   const notifRef = useRef(null);
 
-  // Build notifications from pending orders + open tickets
+  // Re-read user on mount (covers the case where navigate happened before state settled)
+  useEffect(() => {
+    const user = getStoredUser();
+    setSession(user);
+  }, []);
+
+  // Derive display name from JWT user object
+  const displayName = session
+    ? [session.first_name, session.last_name].filter(Boolean).join(" ") || session.email
+    : "Student";
+
+  // Build notifications from open tickets only (orders come from API now)
   const notifications = (() => {
     const email = session?.email || "";
-    const orders  = getStudentOrders(email);
     const tickets = getStudentTickets(email);
-    const items = [];
-    orders.filter((o) => o.status === "pending").forEach((o) => {
-      items.push({ id: `ord-${o.id}`, type: "order", title: "Order Pending", body: o.project, date: o.date, link: "/student/orders" });
-    });
-    tickets.filter((t) => t.status === "open").forEach((t) => {
-      items.push({ id: `tkt-${t.id}`, type: "ticket", title: "Open Ticket", body: t.subject, date: t.createdAt, link: "/student/support" });
-    });
-    return items;
+    return tickets
+      .filter((t) => t.status === "open")
+      .map((t) => ({
+        id: `tkt-${t.id}`, type: "ticket",
+        title: "Open Ticket", body: t.subject,
+        date: t.createdAt, link: "/student/support",
+      }));
   })();
 
   const unread = notifications.length;
@@ -269,23 +335,32 @@ export default function StudentLayout({ children, title }) {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const initials = (session?.name || "S").split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
+  const initials = displayName.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2) || "S";
 
-  // Re-read profile from localStorage on every render so avatar updates instantly after save
-  const [profile, setProfile] = useState(() => {
+  // Helper: read profile (including avatar) from localStorage for a given email
+  const readProfile = (email) => {
+    if (!email) return {};
     try {
-      const raw = localStorage.getItem(`wx_student_profile_${session?.email?.toLowerCase()}`);
+      const raw = localStorage.getItem(`wx_student_profile_${email.toLowerCase()}`);
       return raw ? JSON.parse(raw) : {};
     } catch { return {}; }
-  });
+  };
 
-  // Listen for storage changes (same-tab saves trigger a custom event)
+  // Profile state — initialised from localStorage immediately so avatar shows on first render
+  const [profile, setProfile] = useState(() => readProfile(getStoredUser()?.email));
+
+  // Re-read profile whenever the session email resolves (covers post-login navigation)
+  useEffect(() => {
+    if (session?.email) {
+      setProfile(readProfile(session.email));
+    }
+  }, [session?.email]);
+
+  // Listen for profile saves (same-tab custom event) and cross-tab storage events
   useEffect(() => {
     const refresh = () => {
-      try {
-        const raw = localStorage.getItem(`wx_student_profile_${session?.email?.toLowerCase()}`);
-        setProfile(raw ? JSON.parse(raw) : {});
-      } catch { setProfile({}); }
+      const email = getStoredUser()?.email || session?.email;
+      setProfile(readProfile(email));
     };
     window.addEventListener("wx-profile-updated", refresh);
     window.addEventListener("storage", refresh);
@@ -295,8 +370,9 @@ export default function StudentLayout({ children, title }) {
     };
   }, [session?.email]);
 
-  const handleLogout = () => {
-    studentLogout();
+  const handleLogout = async () => {
+    setShowLogoutModal(false);
+    await studentLogoutApi();
     navigate("/student/login");
   };
 
@@ -304,6 +380,12 @@ export default function StudentLayout({ children, title }) {
 
   return (
     <div className="sd-shell">
+      {showLogoutModal && (
+        <LogoutModal
+          onConfirm={handleLogout}
+          onCancel={() => setShowLogoutModal(false)}
+        />
+      )}
       {sidebarOpen && <div className="sd-backdrop" onClick={() => setSidebarOpen(false)} />}
 
       {/* Sidebar */}
@@ -336,7 +418,7 @@ export default function StudentLayout({ children, title }) {
             }
           </div>
           <div style={{ minWidth: 0 }}>
-            <div className="sd-sidebar__student-name">{session?.name || "Student"}</div>
+            <div className="sd-sidebar__student-name">{displayName}</div>
             <div className="sd-sidebar__student-email">{session?.email || ""}</div>
           </div>
         </div>
@@ -361,7 +443,7 @@ export default function StudentLayout({ children, title }) {
             </span>
             <span>Browse Projects</span>
           </Link>
-          <button className="sd-nav-item sd-nav-item--logout" onClick={handleLogout}>
+          <button className="sd-nav-item sd-nav-item--logout" onClick={() => setShowLogoutModal(true)}>
             <span className="sd-nav-item__icon">
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
             </span>

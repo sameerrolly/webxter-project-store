@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useCart } from "./CartContext";
-import { isStudentLoggedIn, studentLogout } from "./student/studentStore";
+import { isLoggedIn, studentLogoutApi } from "./student/StudentApi";
 import "./Layout.css";
 
 // ─── Shared SVG icons ─────────────────────────────────────────────────────────
@@ -28,7 +28,113 @@ const DashboardIcon = () => (
   </svg>
 );
 
-// ─── Logo ─────────────────────────────────────────────────────────────────────
+// ─── Logout Confirmation Modal ────────────────────────────────────────────────
+function LogoutModal({ onConfirm, onCancel }) {
+  // Close on Escape
+  React.useEffect(() => {
+    const h = (e) => { if (e.key === "Escape") onCancel(); };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [onCancel]);
+
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}
+      onClick={onCancel}
+      aria-modal="true"
+      role="dialog"
+      aria-labelledby="logout-title"
+    >
+      {/* Backdrop */}
+      <div style={{ position: "absolute", inset: 0, background: "rgba(15,23,42,0.55)", backdropFilter: "blur(4px)" }} />
+
+      {/* Card */}
+      <div
+        style={{ position: "relative", background: "#fff", borderRadius: 20, padding: "32px 28px", width: "100%", maxWidth: 380, boxShadow: "0 20px 60px rgba(0,0,0,.18)", textAlign: "center", fontFamily: "'Inter','Segoe UI',system-ui,sans-serif" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Icon */}
+        <div style={{ width: 64, height: 64, borderRadius: "50%", background: "linear-gradient(135deg,#fff1f2,#fef2f2)", border: "2px solid #fecaca", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px", color: "#ef4444" }}>
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+        </div>
+
+        <h2 id="logout-title" style={{ fontSize: "1.2rem", fontWeight: 800, color: "#0f172a", marginBottom: 8 }}>Sign out?</h2>
+        <p style={{ fontSize: ".875rem", color: "#64748b", marginBottom: 28, lineHeight: 1.6 }}>
+          You'll need to sign in again to access your dashboard and orders.
+        </p>
+
+        <div style={{ display: "flex", gap: 10 }}>
+          <button
+            onClick={onCancel}
+            style={{ flex: 1, padding: "11px", borderRadius: 10, border: "1.5px solid #e2e8f0", background: "#fff", color: "#334155", fontWeight: 600, fontSize: ".9rem", cursor: "pointer", fontFamily: "inherit", transition: "border-color .15s" }}
+            onMouseEnter={(e) => e.currentTarget.style.borderColor = "#009fd4"}
+            onMouseLeave={(e) => e.currentTarget.style.borderColor = "#e2e8f0"}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            style={{ flex: 1, padding: "11px", borderRadius: 10, border: "none", background: "linear-gradient(135deg,#ef4444,#dc2626)", color: "#fff", fontWeight: 700, fontSize: ".9rem", cursor: "pointer", fontFamily: "inherit", boxShadow: "0 4px 12px rgba(239,68,68,.3)" }}
+          >
+            Yes, Sign Out
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Login Required Modal ─────────────────────────────────────────────────────
+function LoginRequiredModal({ onLogin, onCancel }) {
+  React.useEffect(() => {
+    const h = (e) => { if (e.key === "Escape") onCancel(); };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [onCancel]);
+
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}
+      onClick={onCancel}
+      aria-modal="true"
+      role="dialog"
+    >
+      <div style={{ position: "absolute", inset: 0, background: "rgba(15,23,42,0.55)", backdropFilter: "blur(4px)" }} />
+      <div
+        style={{ position: "relative", background: "#fff", borderRadius: 20, padding: "32px 28px", width: "100%", maxWidth: 380, boxShadow: "0 20px 60px rgba(0,0,0,.18)", textAlign: "center", fontFamily: "'Inter','Segoe UI',system-ui,sans-serif" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ width: 64, height: 64, borderRadius: "50%", background: "linear-gradient(135deg,#f0faff,#fdf0ff)", border: "2px solid rgba(0,159,212,.2)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px", color: "#009fd4" }}>
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+        </div>
+        <h2 style={{ fontSize: "1.2rem", fontWeight: 800, color: "#0f172a", marginBottom: 8 }}>Sign in to continue</h2>
+        <p style={{ fontSize: ".875rem", color: "#64748b", marginBottom: 28, lineHeight: 1.6 }}>
+          You need to be signed in to add projects to your cart and place orders.
+        </p>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button
+            onClick={onCancel}
+            style={{ flex: 1, padding: "11px", borderRadius: 10, border: "1.5px solid #e2e8f0", background: "#fff", color: "#334155", fontWeight: 600, fontSize: ".9rem", cursor: "pointer", fontFamily: "inherit" }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onLogin}
+            style={{ flex: 1, padding: "11px", borderRadius: 10, border: "none", background: "linear-gradient(135deg,#009fd4,#0077a8)", color: "#fff", fontWeight: 700, fontSize: ".9rem", cursor: "pointer", fontFamily: "inherit", boxShadow: "0 4px 12px rgba(0,159,212,.3)" }}
+          >
+            Sign In
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 function SiteLogo({ size = "navbar" }) {
   const isFooter = size === "footer";
   return (
@@ -144,20 +250,48 @@ function MobileSidebar({ open, onClose, loggedIn, onLogout }) {
 // ─── Navbar ───────────────────────────────────────────────────────────────────
 export function Navbar() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
   const { cart } = useCart();
   const location = useLocation();
   const navigate = useNavigate();
-  const loggedIn = isStudentLoggedIn();
+  const loggedIn = isLoggedIn();
 
   const isActive = (path) => location.pathname === path;
 
-  function handleLogout() {
-    studentLogout();
+  // Listen for add-to-cart attempts by guests
+  React.useEffect(() => {
+    const handler = () => setShowLoginModal(true);
+    window.addEventListener("wx-login-required", handler);
+    return () => window.removeEventListener("wx-login-required", handler);
+  }, []);
+
+  const handleLogoutConfirm = async () => {
+    setShowLogoutModal(false);
+    await studentLogoutApi();
     navigate("/");
-  }
+  };
+
+  // Called by add-to-cart guard when user is not logged in
+  const handleLoginRedirect = () => {
+    setShowLoginModal(false);
+    navigate("/student/login");
+  };
 
   return (
     <>
+      {showLogoutModal && (
+        <LogoutModal
+          onConfirm={handleLogoutConfirm}
+          onCancel={() => setShowLogoutModal(false)}
+        />
+      )}
+      {showLoginModal && (
+        <LoginRequiredModal
+          onLogin={handleLoginRedirect}
+          onCancel={() => setShowLoginModal(false)}
+        />
+      )}
       {/* Marquee */}
       <div className="layout-marquee" aria-hidden="true">
         <div className="layout-marquee__track">
@@ -199,7 +333,7 @@ export function Navbar() {
               {cart.length > 0 && <span className="layout-navbar__cart-count">{cart.length}</span>}
             </Link>
             {loggedIn
-              ? <button onClick={handleLogout} className="layout-navbar__cart" aria-label="Logout" title="Logout">
+              ? <button onClick={() => setShowLogoutModal(true)} className="layout-navbar__cart" aria-label="Logout" title="Logout">
                   <DashboardIcon />
                 </button>
               : <a href="/student/login" className="layout-navbar__cart" aria-label="Sign In" title="Sign In">
@@ -225,7 +359,7 @@ export function Navbar() {
         </div>
       </nav>
 
-      <MobileSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} loggedIn={loggedIn} onLogout={handleLogout} />
+      <MobileSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} loggedIn={loggedIn} onLogout={() => { setSidebarOpen(false); setShowLogoutModal(true); }} />
     </>
   );
 }

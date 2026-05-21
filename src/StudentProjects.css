@@ -231,11 +231,44 @@ img { max-width: 100%; display: block; }
 }
 .wx-project-card:hover { border-color: var(--grad-start); box-shadow: var(--shadow-glow); transform: translateY(-4px); }
 .wx-project-card--sold-out { opacity: 0.6; }
-.wx-project-card__badge {
-  position: absolute; top: 16px; right: 16px;
-  background: linear-gradient(45deg, #009fd4, #ff6eff); color: #fff;
-  font-size: 0.72rem; font-weight: 700; padding: 3px 10px;
-  border-radius: 999px; text-transform: uppercase; letter-spacing: 0.5px;
+/* ── Project card legend ribbon ── */
+.wx-project-card__legend {
+  /* position: absolute;
+  top: 0; left: 150px;
+  z-index: 2;
+  pointer-events: none; */
+  position: relative;
+    top: -24px;
+    left: 0px;
+    z-index: 2;
+    pointer-events: none;
+    margin: auto;
+    text-align: center;
+    max-width: 220px;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.wx-project-card__legend-ribbon {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 14px 5px 12px;
+  /* border-radius: 0 0 14px 0; */
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  white-space: nowrap;
+}
+.wx-project-card__legend-icon {
+  font-size: 0.85rem;
+  line-height: 1;
+}
+.wx-project-card__legend-text {
+  line-height: 1;
 }
 .wx-project-card__sold-out-overlay {
   position: absolute; top: 16px; left: 16px;

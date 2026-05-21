@@ -428,11 +428,43 @@ function HowWeHelp() {
   );
 }
 
+// ─── Badge legend config ──────────────────────────────────────────────────────
+const BADGE_CONFIG = {
+  hot:      { bg: "linear-gradient(135deg,#ff6b35,#f7c59f)", color: "#7c2d12", icon: "🔥" },
+  popular:  { bg: "linear-gradient(135deg,#7c3aed,#c4b5fd)", color: "#3b0764", icon: "⭐" },
+  new:      { bg: "linear-gradient(135deg,#059669,#6ee7b7)", color: "#064e3b", icon: "✨" },
+  trending: { bg: "linear-gradient(135deg,#0ea5e9,#7dd3fc)", color: "#0c4a6e", icon: "📈" },
+  sale:     { bg: "linear-gradient(135deg,#dc2626,#fca5a5)", color: "#7f1d1d", icon: "🏷️" },
+  featured: { bg: "linear-gradient(135deg,#d97706,#fde68a)", color: "#78350f", icon: "👑" },
+  limited:  { bg: "linear-gradient(135deg,#db2777,#fbcfe8)", color: "#831843", icon: "⏳" },
+};
+
+function ProjectBadge({ label }) {
+  const key = label.toLowerCase().trim();
+  const cfg = BADGE_CONFIG[key] || {
+    bg: "linear-gradient(135deg,#009fd4,#ff6eff)",
+    color: "#0c4a6e",
+    icon: "🏅",
+  };
+
+  return (
+    <div className="wx-project-card__legend">
+      <div
+        className="wx-project-card__legend-ribbon"
+        style={{ background: cfg.bg, color: cfg.color }}
+      >
+        <span className="wx-project-card__legend-icon">{cfg.icon}</span>
+        <span className="wx-project-card__legend-text">{label}</span>
+      </div>
+    </div>
+  );
+}
+
 function ProjectCard({ project, onAddToCart }) {
   const discount = Math.round(((project.originalPrice - project.price) / project.originalPrice) * 100);
   return (
     <div className={`wx-project-card ${project.soldOut ? "wx-project-card--sold-out" : ""}`}>
-      {project.badge && <span className="wx-project-card__badge">{project.badge}</span>}
+      {project.badge && <ProjectBadge label={project.badge} />}
       {project.soldOut && <div className="wx-project-card__sold-out-overlay">Sold Out</div>}
       <div className="wx-project-card__header">
         <div className="wx-project-card__level" style={{ color: LEVEL_COLORS[project.level] }}>

@@ -1,7 +1,7 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import StudentLayout from "./StudentLayout";
-import { getStudentSession, getStudentOrders } from "./studentStore";
+import { getOrdersApi } from "./StudentApi";
 import { getProjects } from "../admin/adminStore";
 
 const FILE_ICONS = {
@@ -20,14 +20,21 @@ const DEFAULT_FILES = [
 ];
 
 export default function StudentDownloads() {
-  const session = getStudentSession();
-  const orders = useMemo(() => getStudentOrders(session?.email || ""), [session]);
+  const [orders,  setOrders]  = useState([]);
+  const [loading, setLoading] = useState(true);
   const projects = useMemo(() => getProjects(), []);
+
+  useEffect(() => {
+    getOrdersApi()
+      .then(setOrders)
+      .catch(() => setOrders([]))
+      .finally(() => setLoading(false));
+  }, []);
 
   const completed = orders.filter((o) => o.status === "completed");
 
   const downloadItems = completed.map((o) => {
-    const proj = projects.find((p) => p.title === o.project);
+    const proj = projects.find((p) => p.title === (o.project || o.project_title));
     const files = proj?.projectFiles?.length > 0 ? proj.projectFiles : DEFAULT_FILES;
     return { order: o, project: proj, files };
   });
@@ -37,7 +44,7 @@ export default function StudentDownloads() {
       <div className="sd-page-header">
         <div>
           <div className="sd-page-header__title">Downloads</div>
-          <div className="sd-page-header__sub">{completed.length} project{completed.length !== 1 ? "s" : ""} available</div>
+          <div className="sd-page-header__sub">{loading ? "Loading…" : `${completed.length} project${completed.length !== 1 ? "s" : ""} available`}</div>
         </div>
       </div>
 
@@ -71,10 +78,10 @@ export default function StudentDownloads() {
                     }
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="sd-download-card__title">{order.project}</div>
+                    <div className="sd-download-card__title">{order.project || order.project_title}</div>
                     <div className="sd-download-card__meta">
                       <span style={{ fontFamily: "monospace", color: "#009fd4", fontSize: ".72rem" }}>{order.id}</span>
-                      {" · "}₹{order.amount.toLocaleString("en-IN")}
+                      {" · "}₹{(order.amount || 0).toLocaleString("en-IN")}
                     </div>
                     <span className="sd-badge sd-badge--green" style={{ marginTop: 4, display: "inline-flex" }}>Completed</span>
                   </div>

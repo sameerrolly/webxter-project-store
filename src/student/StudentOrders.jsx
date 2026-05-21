@@ -1,22 +1,24 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import StudentLayout from "./StudentLayout";
-import { getStudentSession, getStudentOrders } from "./studentStore";
+import { getOrdersApi, getStoredUser } from "./StudentApi";
 import { getProjects } from "../admin/adminStore";
 
 // ─── License generator ────────────────────────────────────────────────────────
-function downloadLicense(order, session) {
-  const studentName = session?.name || session?.email || "Student";
+function downloadLicense(order, user) {
+  const studentName = user
+    ? [user.first_name, user.last_name].filter(Boolean).join(" ") || user.email
+    : "Student";
   const licenseText = `WEBXTER PROJECT LICENSE
 ========================
 
 License ID   : LIC-${order.id}
 Order ID     : ${order.id}
-Project      : ${order.project}
+Project      : ${order.project || order.project_title}
 Licensed To  : ${studentName}
-Email        : ${session?.email || "—"}
-Amount Paid  : ₹${order.amount.toLocaleString("en-IN")}
-Date         : ${order.date}
+Email        : ${user?.email || "—"}
+Amount Paid  : ₹${(order.amount || 0).toLocaleString("en-IN")}
+Date         : ${order.date || order.created_at}
 Issued By    : Webxter (webxter.in)
 
 TERMS OF USE
@@ -146,14 +148,21 @@ function DownloadCard({ order, project }) {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function StudentOrders() {
-  const session  = getStudentSession();
-  const orders   = useMemo(() => getStudentOrders(session?.email || ""), [session]);
+  const session  = getStoredUser();
+  const [orders,   setOrders]   = useState([]);
+  const [loading,  setLoading]  = useState(true);
   const projects = useMemo(() => getProjects(), []);
+
+  useEffect(() => {
+    getOrdersApi()
+      .then(setOrders)
+      .catch(() => setOrders([]))
+      .finally(() => setLoading(false));
+  }, []);
 
   const [filter,   setFilter]   = useState("all");
   const [viewMode, setViewMode] = useState("list"); // "list" | "grid"
   const [selected, setSelected] = useState(null);
-
   const filtered = filter === "all" ? orders : orders.filter((o) => o.status === filter);
 
   // For grid view — only completed orders have downloads
@@ -167,7 +176,7 @@ export default function StudentOrders() {
         <div>
           <div className="sd-page-header__title">My Orders</div>
           <div className="sd-page-header__sub">
-            {orders.length} total · {orders.filter((o) => o.status === "completed").length} completed
+            {loading ? "Loading…" : `${orders.length} total · ${orders.filter((o) => o.status === "completed").length} completed`}
           </div>
         </div>
 
@@ -295,8 +304,7 @@ export default function StudentOrders() {
                         </button>
                         <button
                           className="sd-btn sd-btn--ghost sd-btn--sm"
-                          onClick={(e) => { e.stopPropagation(); downloadLicense(o, session); }}
-                          title="Download your license certificate"
+                          onClick={(e) => { e.stopPropagation(); downloadLicense(o, session); }}                          title="Download your license certificate"
                         >
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -336,10 +344,10 @@ export default function StudentOrders() {
             </div>
 
             {[
-              ["Project",  selected.project],
-              ["Amount",   `₹${selected.amount.toLocaleString("en-IN")}`],
-              ["Payment",  PAY_LABEL[selected.payMethod] || selected.payMethod],
-              ["Date",     selected.date],
+              ["Project",  selected.project || selected.project_title],
+              ["Amount",   `₹${(selected.amount || 0).toLocaleString("en-IN")}`],
+              ["Payment",  PAY_LABEL[selected.payMethod || selected.pay_method] || selected.payMethod || selected.pay_method || "—"],
+              ["Date",     selected.date || selected.created_at],
               ["College",  selected.college || "—"],
             ].map(([k, v]) => (
               <div key={k} className="sd-modal__row">

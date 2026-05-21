@@ -1,18 +1,55 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import StudentLayout from "./StudentLayout";
-import { getStudentSession, getStudentProfile, saveStudentProfile } from "./studentStore";
+import { getStoredUser, getProfileApi, updateProfileApi } from "./StudentApi";
+import { saveStudentProfile } from "./studentStore"; // still used for local avatar storage
 
 const YEARS = ["1st Year", "2nd Year", "3rd Year", "4th Year", "Final Year", "Post Graduate", "Alumni"];
 const MAX_SIZE_MB = 2;
 
 export default function StudentProfile() {
-  const session = getStudentSession();
-  const [profile, setProfile] = useState(() => getStudentProfile(session?.email || ""));
-  const [saved,   setSaved]   = useState(false);
-  const [errors,  setErrors]  = useState({});
-  const [imgError, setImgError] = useState("");
+  const user = getStoredUser();
+  const email = user?.email || "";
+
+  const [profile, setProfile] = useState({
+    name:    [user?.first_name, user?.last_name].filter(Boolean).join(" ") || "",
+    email:   email,
+    phone:   user?.phone || "",
+    college: user?.college || "",
+    year:    user?.year || "",
+    bio:     user?.bio || "",
+    avatar:  "",
+  });
+  const [saved,     setSaved]     = useState(false);
+  const [errors,    setErrors]    = useState({});
+  const [imgError,  setImgError]  = useState("");
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef(null);
+
+  // Load full profile from API on mount
+  useEffect(() => {
+    getProfileApi().then((data) => {
+      const name = [data.first_name, data.last_name].filter(Boolean).join(" ");
+      // Merge with any locally stored avatar
+      const localRaw = localStorage.getItem(`wx_student_profile_${email.toLowerCase()}`);
+      const local = localRaw ? JSON.parse(localRaw) : {};
+      setProfile((p) => ({
+        ...p,
+        name:    name || p.name,
+        email:   data.email || p.email,
+        phone:   data.phone   || local.phone   || p.phone,
+        college: data.college || local.college || p.college,
+        year:    data.year    || local.year    || p.year,
+        bio:     data.bio     || local.bio     || p.bio,
+        avatar:  local.avatar || p.avatar,
+      }));
+    }).catch(() => {
+      // Fall back to locally stored profile if API fails
+      const localRaw = localStorage.getItem(`wx_student_profile_${email.toLowerCase()}`);
+      if (localRaw) {
+        try { setProfile((p) => ({ ...p, ...JSON.parse(localRaw) })); } catch {}
+      }
+    });
+  }, [email]);
 
   const set = (k) => (e) => setProfile((p) => ({ ...p, [k]: e.target.value }));
 
@@ -49,8 +86,8 @@ export default function StudentProfile() {
         const dataUrl = canvas.toDataURL("image/jpeg", 0.88);
         const updated = { ...profile, avatar: dataUrl };
         setProfile(updated);
-        // Auto-save avatar immediately so navbar updates right away
-        saveStudentProfile(session?.email || "", updated);
+        // Save avatar locally (it's a data URL — too large for the API)
+        saveStudentProfile(email, updated);
         setUploading(false);
       };
       img.src = ev.target.result;
@@ -62,7 +99,7 @@ export default function StudentProfile() {
   const removeAvatar = () => {
     const updated = { ...profile, avatar: "" };
     setProfile(updated);
-    saveStudentProfile(session?.email || "", updated);
+    saveStudentProfile(email, updated);
     setImgError("");
   };
 
@@ -75,11 +112,24 @@ export default function StudentProfile() {
     return e;
   };
 
-  const handleSave = (e) => {
+  const handleSave = async (e) => {
     e.preventDefault();
     const errs = validate();
     if (Object.keys(errs).length) { setErrors(errs); return; }
-    saveStudentProfile(session?.email || "", profile);
+
+    // Split name back into first/last for the API
+    const parts = (profile.name || "").trim().split(" ");
+    const first_name = parts[0] || "";
+    const last_name  = parts.slice(1).join(" ") || "";
+
+    try {
+      await updateProfileApi({ first_name, last_name, phone: profile.phone, college: profile.college, year: profile.year, bio: profile.bio });
+    } catch {
+      // Non-critical — still save locally
+    }
+
+    // Always save locally (avatar is stored here)
+    saveStudentProfile(email, profile);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   };

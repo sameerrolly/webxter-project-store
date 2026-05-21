@@ -1,11 +1,14 @@
 import React, { useState } from "react";
-import { useNavigate, Link, useSearchParams } from "react-router-dom";
-import {
-  studentLogin, studentRegister,
-  requestPasswordReset, verifyOtpAndReset,
-  DEMO_USERS,
-} from "./studentStore";
+import { useNavigate, Link, useSearchParams, Navigate } from "react-router-dom";
+import { studentLoginApi, studentRegisterApi, isLoggedIn } from "./StudentApi";
 import "./student.css";
+
+// Demo users shown on the login page (for reference only — must exist in the backend)
+const DEMO_USERS = [
+  { name: "Rahul Sharma",  email: "rahul@example.com",  password: "Student@123", college: "IIT Delhi"   },
+  { name: "Priya Patel",   email: "priya@example.com",  password: "Student@123", college: "NIT Surat"   },
+  { name: "Amit Kumar",    email: "amit@example.com",   password: "Student@123", college: "VIT Vellore" },
+];
 
 // ─── Shared field ─────────────────────────────────────────────────────────────
 function Field({ label, id, type = "text", placeholder, value, onChange, error, hint, required, autoFocus, children }) {
@@ -77,7 +80,7 @@ function AuthCard({ children }) {
           <video autoPlay loop playsInline muted width="42" height="42" style={{ borderRadius: 8, flexShrink: 0 }}>
             <source src="https://www.webxter.in/webxter-preloader.mp4" type="video/mp4" />
           </video>
-          <img alt="Webxter" width="108" height="22" loading="lazy"
+          <img alt="Webxter" width="108" height="60" loading="lazy"
             src="https://www.webxter.in/_next/image?url=%2Fwebxter-text-light.png&w=256&q=75"
             style={{ color: "transparent", objectFit: "contain" }} />
         </a>
@@ -98,33 +101,60 @@ function LoginForm({ onSwitch }) {
   const navigate = useNavigate();
   const [form, setForm] = useState({ email: "", password: "" });
   const [errors, setErrors] = useState({});
+  const [apiError, setApiError] = useState(""); // top-level error from server
   const [loading, setLoading] = useState(false);
 
-  const set = (k) => (e) => { setForm((f) => ({ ...f, [k]: e.target.value })); setErrors((er) => ({ ...er, [k]: "" })); };
+  const set = (k) => (e) => {
+    setForm((f) => ({ ...f, [k]: e.target.value }));
+    setErrors((er) => ({ ...er, [k]: "" }));
+    setApiError(""); // clear server error when user types
+  };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const errs = {};
     if (!form.email.trim()) errs.email = "Email is required";
-    else if (!/\S+@\S+\.\S+/.test(form.email)) errs.email = "Enter a valid email";
+    else if (!/\S+@\S+\.\S+/.test(form.email)) errs.email = "Enter a valid email address";
     if (!form.password) errs.password = "Password is required";
     if (Object.keys(errs).length) { setErrors(errs); return; }
 
     setLoading(true);
-    setTimeout(() => {
-      const result = studentLogin(form.email, form.password);
+    setApiError("");
+    try {
+      await studentLoginApi(form.email, form.password);
+      navigate("/student/dashboard", { replace: true });
+    } catch (err) {
+      setApiError(err.message || "Incorrect email or password. Please try again.");
+    } finally {
       setLoading(false);
-      if (result.success) navigate("/student/dashboard");
-      else setErrors({ [result.field || "password"]: result.error });
-    }, 500);
+    }
   };
 
-  const fillDemo = (user) => setForm({ email: user.email, password: user.password });
+  const fillDemo = (user) => {
+    setForm({ email: user.email, password: user.password });
+    setApiError("");
+    setErrors({});
+  };
 
   return (
     <>
       <h1 style={{ fontSize: "1.35rem", fontWeight: 800, color: "#0f172a", marginBottom: 4 }}>Welcome back</h1>
       <p style={{ fontSize: ".875rem", color: "#64748b", marginBottom: 24 }}>Sign in to your student dashboard</p>
+
+      {/* ── Server error banner ── */}
+      {apiError && (
+        <div style={{
+          display: "flex", alignItems: "flex-start", gap: 10,
+          background: "#fef2f2", border: "1px solid #fecaca",
+          borderRadius: 10, padding: "12px 14px", marginBottom: 16,
+          fontSize: ".85rem", color: "#b91c1c", lineHeight: 1.5,
+        }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <span>{apiError}</span>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }} noValidate>
         <Field label="Email Address" id="email" type="email" placeholder="rahul@example.com"
@@ -154,30 +184,7 @@ function LoginForm({ onSwitch }) {
         Create a new account
       </button>
 
-      {/* Demo accounts */}
-      <div style={{ background: "#f8f9fb", border: "1px solid #e2e8f0", borderRadius: 12, padding: "14px 16px" }}>
-        <div style={{ fontSize: ".75rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 10 }}>
-          Demo Accounts — click to fill
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-          {DEMO_USERS.map((u) => (
-            <button key={u.email} type="button" onClick={() => fillDemo(u)}
-              style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, cursor: "pointer", textAlign: "left", transition: "border-color .15s", fontFamily: "inherit" }}
-              onMouseEnter={(e) => e.currentTarget.style.borderColor = "#009fd4"}
-              onMouseLeave={(e) => e.currentTarget.style.borderColor = "#e2e8f0"}>
-              <div style={{ width: 30, height: 30, borderRadius: "50%", background: "linear-gradient(45deg,#009fd4,#ff6eff)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: ".75rem", flexShrink: 0 }}>
-                {u.name.split(" ").map((w) => w[0]).join("").slice(0, 2)}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 600, fontSize: ".82rem", color: "#0f172a" }}>{u.name}</div>
-                <div style={{ fontSize: ".72rem", color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email}</div>
-              </div>
-              <div style={{ fontSize: ".7rem", color: "#009fd4", fontWeight: 600, flexShrink: 0 }}>Use →</div>
-            </button>
-          ))}
-        </div>
-        <p style={{ fontSize: ".72rem", color: "#94a3b8", marginTop: 8 }}>Password for all demo accounts: <strong style={{ color: "#334155" }}>Student@123</strong></p>
-      </div>
+    
 
       <p style={{ textAlign: "center", marginTop: 18, fontSize: ".78rem", color: "#94a3b8" }}>
         <Link to="/" style={{ color: "#009fd4" }}>← Back to store</Link>
@@ -191,10 +198,15 @@ function RegisterForm({ onSwitch }) {
   const navigate = useNavigate();
   const [form, setForm] = useState({ name: "", email: "", password: "", confirm: "", phone: "", college: "", year: "" });
   const [errors, setErrors] = useState({});
+  const [apiError, setApiError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState(1); // 1 = basic, 2 = details
+  const [step, setStep] = useState(1);
 
-  const set = (k) => (e) => { setForm((f) => ({ ...f, [k]: e.target.value })); setErrors((er) => ({ ...er, [k]: "" })); };
+  const set = (k) => (e) => {
+    setForm((f) => ({ ...f, [k]: e.target.value }));
+    setErrors((er) => ({ ...er, [k]: "" }));
+    setApiError("");
+  };
 
   const validateStep1 = () => {
     const e = {};
@@ -219,23 +231,48 @@ function RegisterForm({ onSwitch }) {
     setStep(2);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const errs = validateStep2();
     if (Object.keys(errs).length) { setErrors(errs); return; }
     setLoading(true);
-    setTimeout(() => {
-      const result = studentRegister(form);
+    try {
+      await studentRegisterApi({
+        name:     form.name,
+        email:    form.email,
+        password: form.password,
+        phone:    form.phone,
+        college:  form.college,
+        year:     form.year,
+      });
+      navigate("/student/dashboard", { replace: true });
+    } catch (err) {
+      setApiError(err.message || "Registration failed. Please try again.");
+      setStep(1);
+    } finally {
       setLoading(false);
-      if (result.success) navigate("/student/dashboard");
-      else setErrors({ email: result.error });
-    }, 500);
+    }
   };
 
   return (
     <>
       <h1 style={{ fontSize: "1.35rem", fontWeight: 800, color: "#0f172a", marginBottom: 4 }}>Create account</h1>
       <p style={{ fontSize: ".875rem", color: "#64748b", marginBottom: 20 }}>Join Webxter Student Portal</p>
+
+      {/* ── Server error banner ── */}
+      {apiError && (
+        <div style={{
+          display: "flex", alignItems: "flex-start", gap: 10,
+          background: "#fef2f2", border: "1px solid #fecaca",
+          borderRadius: 10, padding: "12px 14px", marginBottom: 16,
+          fontSize: ".85rem", color: "#b91c1c", lineHeight: 1.5,
+        }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <span>{apiError}</span>
+        </div>
+      )}
 
       {/* Step indicator */}
       <div style={{ display: "flex", gap: 8, marginBottom: 24 }}>
@@ -327,111 +364,27 @@ function RegisterForm({ onSwitch }) {
 
 // ─── FORGOT PASSWORD ──────────────────────────────────────────────────────────
 function ForgotForm({ onSwitch }) {
-  const [step, setStep] = useState("email"); // "email" | "otp" | "done"
-  const [email, setEmail] = useState("");
-  const [otp, setOtp] = useState("");
-  const [newPw, setNewPw] = useState("");
-  const [confirmPw, setConfirmPw] = useState("");
-  const [error, setError] = useState("");
-  const [info, setInfo] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [demoOtp, setDemoOtp] = useState("");
-
-  const handleRequestOtp = (e) => {
-    e.preventDefault();
-    if (!email.trim()) { setError("Email is required"); return; }
-    setLoading(true); setError("");
-    setTimeout(() => {
-      const result = requestPasswordReset(email);
-      setLoading(false);
-      if (result.success) {
-        setDemoOtp(result.otp);
-        setInfo(result.message);
-        setStep("otp");
-      } else setError(result.error);
-    }, 500);
-  };
-
-  const handleReset = (e) => {
-    e.preventDefault();
-    if (!otp.trim()) { setError("Enter the OTP"); return; }
-    if (!newPw || newPw.length < 8) { setError("Password must be at least 8 characters"); return; }
-    if (newPw !== confirmPw) { setError("Passwords do not match"); return; }
-    setLoading(true); setError("");
-    setTimeout(() => {
-      const result = verifyOtpAndReset(email, otp, newPw);
-      setLoading(false);
-      if (result.success) setStep("done");
-      else setError(result.error);
-    }, 500);
-  };
-
-  if (step === "done") return (
-    <>
-      <div style={{ textAlign: "center", padding: "20px 0" }}>
-        <div style={{ width: 72, height: 72, borderRadius: "50%", background: "linear-gradient(135deg,#f0faff,#fdf0ff)", border: "2px solid rgba(0,159,212,.2)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", color: "#009fd4" }}>
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-        </div>
-        <h2 style={{ fontWeight: 800, fontSize: "1.2rem", color: "#0f172a", marginBottom: 8 }}>Password Reset!</h2>
-        <p style={{ fontSize: ".875rem", color: "#64748b", marginBottom: 20 }}>Your password has been updated successfully.</p>
-        <button className="sd-btn sd-btn--primary sd-btn--full" onClick={() => onSwitch("login")} style={{ padding: "12px" }}>Sign In Now</button>
-      </div>
-    </>
-  );
-
   return (
     <>
       <h1 style={{ fontSize: "1.35rem", fontWeight: 800, color: "#0f172a", marginBottom: 4 }}>Reset password</h1>
       <p style={{ fontSize: ".875rem", color: "#64748b", marginBottom: 24 }}>
-        {step === "email" ? "Enter your email to receive a reset OTP." : "Enter the OTP and your new password."}
+        To reset your password, please contact our support team.
       </p>
 
-      {step === "email" ? (
-        <form onSubmit={handleRequestOtp} style={{ display: "flex", flexDirection: "column", gap: 14 }} noValidate>
-          <Field label="Email Address" id="reset-email" type="email" placeholder="rahul@example.com"
-            value={email} onChange={(e) => { setEmail(e.target.value); setError(""); }} error={error} required autoFocus />
-          <button type="submit" className="sd-btn sd-btn--primary sd-btn--full" style={{ padding: "12px" }} disabled={loading}>
-            {loading ? <Spinner /> : "Send OTP"}
-          </button>
-        </form>
-      ) : (
-        <form onSubmit={handleReset} style={{ display: "flex", flexDirection: "column", gap: 14 }} noValidate>
-          {info && (
-            <div className="sd-alert sd-alert--info">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-              <span>{info}</span>
-            </div>
-          )}
-          {demoOtp && (
-            <div style={{ background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.3)", borderRadius: 8, padding: "10px 14px", fontSize: ".82rem", color: "#92400e" }}>
-              <strong>Demo OTP:</strong> <span style={{ fontFamily: "monospace", fontSize: "1rem", fontWeight: 800, letterSpacing: 2 }}>{demoOtp}</span>
-              <button type="button" onClick={() => setOtp(demoOtp)} style={{ marginLeft: 10, background: "none", border: "none", cursor: "pointer", color: "#009fd4", fontSize: ".78rem", fontWeight: 600 }}>Fill →</button>
-            </div>
-          )}
-          <div className="sd-field">
-            <label className="sd-field__label">6-Digit OTP</label>
-            <input type="text" className="sd-field__input" placeholder="123456" maxLength={6}
-              value={otp} onChange={(e) => { setOtp(e.target.value.replace(/\D/g, "")); setError(""); }}
-              style={{ fontFamily: "monospace", fontSize: "1.2rem", letterSpacing: 4, textAlign: "center" }} autoFocus />
-          </div>
-          <div>
-            <Field label="New Password" id="new-pw" type="password" placeholder="Min. 8 characters"
-              value={newPw} onChange={(e) => { setNewPw(e.target.value); setError(""); }} />
-            <PasswordStrength password={newPw} />
-          </div>
-          <Field label="Confirm New Password" id="confirm-pw" type="password" placeholder="Re-enter password"
-            value={confirmPw} onChange={(e) => { setConfirmPw(e.target.value); setError(""); }} />
-          {error && <p style={{ fontSize: ".78rem", color: "#ef4444" }}>{error}</p>}
-          <div style={{ display: "flex", gap: 10 }}>
-            <button type="button" className="sd-btn sd-btn--ghost" style={{ flex: 1 }} onClick={() => setStep("email")}>← Back</button>
-            <button type="submit" className="sd-btn sd-btn--primary" style={{ flex: 2, padding: "11px" }} disabled={loading}>
-              {loading ? <Spinner /> : "Reset Password"}
-            </button>
-          </div>
-        </form>
-      )}
+      <div className="sd-alert sd-alert--info" style={{ marginBottom: 20 }}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span>WhatsApp us at <strong>+91-8264796534</strong> or email <strong>projects@webxter.in</strong> and we'll reset your password within a few hours.</span>
+      </div>
 
-      <p style={{ textAlign: "center", marginTop: 18, fontSize: ".82rem", color: "#64748b" }}>
+      <a href="https://wa.me/918264796534" target="_blank" rel="noopener noreferrer"
+        className="sd-btn sd-btn--primary sd-btn--full" style={{ padding: "12px", marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, textDecoration: "none" }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z"/>
+        </svg>
+        WhatsApp Support
+      </a>
+
+      <p style={{ textAlign: "center", marginTop: 8, fontSize: ".82rem", color: "#64748b" }}>
         Remember it?{" "}
         <button type="button" onClick={() => onSwitch("login")} style={{ background: "none", border: "none", cursor: "pointer", color: "#009fd4", fontWeight: 600, fontSize: ".82rem", padding: 0 }}>Sign in</button>
       </p>
@@ -443,7 +396,13 @@ function ForgotForm({ onSwitch }) {
 export default function StudentAuth() {
   const [searchParams] = useSearchParams();
   const initialView = searchParams.get("mode") === "register" ? "register" : "login";
+  // useState must always be called before any conditional return (Rules of Hooks)
   const [view, setView] = useState(initialView);
+
+  // Already logged in — redirect to dashboard immediately
+  if (isLoggedIn()) {
+    return <Navigate to="/student/dashboard" replace />;
+  }
 
   return (
     <AuthCard>

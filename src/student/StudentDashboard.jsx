@@ -1,7 +1,7 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import StudentLayout from "./StudentLayout";
-import { getStudentSession, getStudentOrders } from "./studentStore";
+import { getStoredUser, getOrdersApi } from "./StudentApi";
 
 const STATUS_BADGE = {
   completed: "sd-badge--green",
@@ -10,11 +10,31 @@ const STATUS_BADGE = {
 };
 
 export default function StudentDashboard() {
-  const session    = getStudentSession();
-  const orders     = useMemo(() => getStudentOrders(session?.email || ""), [session]);
+  // Read user from state so it reflects the token written during login/register
+  const [user, setUser] = useState(() => getStoredUser());
+
+  const displayName = user
+    ? [user.first_name, user.last_name].filter(Boolean).join(" ") || user.email
+    : "Student";
+
+  const [orders,  setOrders]  = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error,   setError]   = useState(null);
+
+  useEffect(() => {
+    // Re-read user in case it was just written by login/register
+    setUser(getStoredUser());
+
+    getOrdersApi()
+      .then((data) => { setOrders(data); setError(null); })
+      .catch((err) => { setError(err.message); setOrders([]); })
+      .finally(() => setLoading(false));
+  }, []);
+
   const completed  = orders.filter((o) => o.status === "completed");
   const pending    = orders.filter((o) => o.status === "pending");
-  const totalSpent = completed.reduce((s, o) => s + o.amount, 0);
+  // DRF returns decimal fields as strings — parse them
+  const totalSpent = completed.reduce((s, o) => s + parseFloat(o.amount || 0), 0);
   const recent     = orders.slice(0, 5);
 
   return (
@@ -24,7 +44,7 @@ export default function StudentDashboard() {
       <div className="sd-welcome-banner">
         <div>
           <div className="sd-welcome-banner__title">
-            Welcome back, {session?.name?.split(" ")[0] || "Student"}!
+            Welcome back, {displayName.split(" ")[0]}!
           </div>
           <div className="sd-welcome-banner__sub">
             {completed.length > 0
@@ -42,16 +62,26 @@ export default function StudentDashboard() {
         </Link>
       </div>
 
+      {/* ── API error notice ── */}
+      {error && (
+        <div className="sd-alert sd-alert--warn" style={{ marginBottom: 16 }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <span>Could not load orders from server: {error}</span>
+        </div>
+      )}
+
       {/* ── Stats ── */}
       <div className="sd-stats">
         {[
-          { label: "Total Orders", value: orders.length,
+          { label: "Total Orders", value: loading ? "…" : orders.length,
             icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg> },
-          { label: "Completed", value: completed.length,
+          { label: "Completed", value: loading ? "…" : completed.length,
             icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> },
-          { label: "Pending", value: pending.length,
+          { label: "Pending", value: loading ? "…" : pending.length,
             icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> },
-          { label: "Total Spent", value: `₹${totalSpent.toLocaleString("en-IN")}`,
+          { label: "Total Spent", value: loading ? "…" : `₹${totalSpent.toLocaleString("en-IN")}`,
             icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> },
         ].map((s) => (
           <div key={s.label} className="sd-stat">
@@ -72,7 +102,9 @@ export default function StudentDashboard() {
             <Link to="/student/orders" className="sd-btn sd-btn--ghost sd-btn--sm">View All</Link>
           </div>
 
-          {recent.length === 0 ? (
+          {loading ? (
+            <div style={{ padding: "24px 0", textAlign: "center", color: "#94a3b8", fontSize: ".875rem" }}>Loading orders…</div>
+          ) : recent.length === 0 ? (
             <div className="sd-empty">
               <div className="sd-empty__icon">
                 <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -97,10 +129,10 @@ export default function StudentDashboard() {
                       <tr key={o.id}>
                         <td>
                           <span style={{ fontWeight: 700, color: "#009fd4", fontFamily: "monospace", fontSize: ".82rem" }}>{o.id}</span>
-                          <div style={{ fontSize: ".72rem", color: "#94a3b8" }}>{o.date}</div>
+                          <div style={{ fontSize: ".72rem", color: "#94a3b8" }}>{o.date || o.created_at}</div>
                         </td>
-                        <td style={{ maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: ".85rem" }}>{o.project}</td>
-                        <td style={{ fontWeight: 700, color: "#009fd4" }}>₹{o.amount.toLocaleString("en-IN")}</td>
+                        <td style={{ maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: ".85rem" }}>{o.project || o.project_title}</td>
+                        <td style={{ fontWeight: 700, color: "#009fd4" }}>₹{parseFloat(o.amount || 0).toLocaleString("en-IN")}</td>
                         <td><span className={`sd-badge ${STATUS_BADGE[o.status] || "sd-badge--gray"}`}>{o.status}</span></td>
                       </tr>
                     ))}
@@ -116,10 +148,10 @@ export default function StudentDashboard() {
                       <span className="sd-recent-mobile__id">{o.id}</span>
                       <span className={`sd-badge ${STATUS_BADGE[o.status] || "sd-badge--gray"}`}>{o.status}</span>
                     </div>
-                    <div className="sd-recent-mobile__project">{o.project}</div>
+                    <div className="sd-recent-mobile__project">{o.project || o.project_title}</div>
                     <div className="sd-recent-mobile__bottom">
-                      <span className="sd-recent-mobile__date">{o.date}</span>
-                      <span className="sd-recent-mobile__amount">₹{o.amount.toLocaleString("en-IN")}</span>
+                      <span className="sd-recent-mobile__date">{o.date || o.created_at}</span>
+                      <span className="sd-recent-mobile__amount">₹{parseFloat(o.amount || 0).toLocaleString("en-IN")}</span>
                     </div>
                   </div>
                 ))}
