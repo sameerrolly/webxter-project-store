@@ -1,7 +1,15 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import AdminLayout from "./AdminLayout";
-import { getProjects, saveProjects, addProject, updateProject, deleteProject } from "./adminStore";
+import {
+  fetchAdminProjects,
+  createAdminProject,
+  updateAdminProject,
+  deleteAdminProject,
+  extractApiError,
+} from "./adminApi";
+// Local store kept as fallback for the form helpers only
+import { getProjects } from "./adminStore";
 
 const CATEGORIES = ["Web Development", "Mobile", "Data Science", "AI/ML", "Desktop", "IoT"];
 const LEVELS = ["Beginner", "Intermediate", "Advanced", "Expert"];
@@ -416,7 +424,7 @@ function ListEditor({ items, onChange, placeholder }) {
 }
 
 // ─── Project Form (shared for Add + Edit) ────────────────────────────────────
-function ProjectForm({ initial, onSave, onCancel, isEdit }) {
+function ProjectForm({ initial, onSave, onCancel, isEdit, saving }) {
   const [form, setForm] = useState(initial);
   const [errors, setErrors] = useState({});
 
@@ -591,9 +599,11 @@ function ProjectForm({ initial, onSave, onCancel, isEdit }) {
       {/* Actions */}
       <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
         <button type="button" className="adm-btn adm-btn--ghost" onClick={onCancel}>Cancel</button>
-        <button type="submit" className="adm-btn adm-btn--primary">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-          {isEdit ? "Save Changes" : "Add Project"}
+        <button type="submit" className="adm-btn adm-btn--primary" disabled={saving}>
+          {saving
+            ? <span style={{ width: 16, height: 16, borderRadius: "50%", border: "2px solid rgba(255,255,255,.3)", borderTopColor: "#fff", animation: "adm-spin .7s linear infinite", display: "inline-block" }} />
+            : <><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> {isEdit ? "Save Changes" : "Add Project"}</>
+          }
         </button>
       </div>
     </form>
@@ -603,24 +613,75 @@ function ProjectForm({ initial, onSave, onCancel, isEdit }) {
 // ─── Projects List ────────────────────────────────────────────────────────────
 export function AdminProjectsList() {
   const navigate = useNavigate();
-  const [projects, setProjects] = useState(() => getProjects());
-  const [search, setSearch] = useState("");
+  const [projects,     setProjects]     = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [error,        setError]        = useState("");
+  const [search,       setSearch]       = useState("");
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [deleting,     setDeleting]     = useState(null);
+  const [toggling,     setToggling]     = useState(null);
 
-  const filtered = projects.filter((p) =>
-    p.title.toLowerCase().includes(search.toLowerCase()) ||
-    p.category.toLowerCase().includes(search.toLowerCase())
-  );
-
-  const handleDelete = (id) => {
-    deleteProject(id);
-    setProjects(getProjects());
-    setConfirmDelete(null);
+  const load = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const data = await fetchAdminProjects();
+      // Normalise backend field names → what the table/toggle expects
+      const normalised = data.map((p) => ({
+        ...p,
+        active:        p.status === "active" || p.active === true,
+        soldOut:       p.is_sold_out ?? p.soldOut ?? false,
+        price:         parseFloat(p.sale_price      ?? p.price         ?? 0) || 0,
+        originalPrice: parseFloat(p.original_price  ?? p.originalPrice ?? 0) || 0,
+        category:      p.category_display || p.category || "",
+        level:         p.level_display    || p.level    || "",
+        delivery:      p.delivery_time    || p.delivery || "",
+        tags:          Array.isArray(p.technologies)   ? p.technologies   : (p.tags     || []),
+        features:      Array.isArray(p.key_features)   ? p.key_features   : (p.features || []),
+        includes:      Array.isArray(p.whats_included) ? p.whats_included : (p.includes || []),
+        screenshots:   Array.isArray(p.screenshots)    ? p.screenshots    : [],
+        slug:          p.slug || String(p.id),
+      }));
+      setProjects(normalised);
+    } catch (err) {
+      setProjects([]);
+      setError(extractApiError(err));
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const toggleActive = (id, val) => {
-    updateProject(id, { active: val });
-    setProjects(getProjects());
+  useEffect(() => { load(); }, []);
+
+  const filtered = projects.filter((p) =>
+    (p.title || "").toLowerCase().includes(search.toLowerCase()) ||
+    (p.category || "").toLowerCase().includes(search.toLowerCase())
+  );
+
+  const handleDelete = async (id) => {
+    setDeleting(id);
+    try {
+      await deleteAdminProject(id);
+      setProjects((prev) => prev.filter((p) => p.id !== id));
+    } catch (err) {
+      alert(extractApiError(err));
+    } finally {
+      setDeleting(null);
+      setConfirmDelete(null);
+    }
+  };
+
+  const toggleActive = async (id, val) => {
+    setToggling(id);
+    try {
+      // Backend uses status field: "active" or "draft"
+      const updated = await updateAdminProject(id, { status: val ? "active" : "draft" });
+      setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, ...updated, active: val } : p)));
+    } catch (err) {
+      alert(extractApiError(err));
+    } finally {
+      setToggling(null);
+    }
   };
 
   return (
@@ -630,88 +691,107 @@ export function AdminProjectsList() {
           <div className="adm-page-header__title">Projects</div>
           <div className="adm-page-header__sub">{projects.length} total · {projects.filter((p) => p.active).length} active</div>
         </div>
-        <Link to="/admin/projects/new" className="adm-btn adm-btn--primary">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Add Project
-        </Link>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button className="adm-btn adm-btn--ghost adm-btn--sm" onClick={load} disabled={loading}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            Refresh
+          </button>
+          <Link to="/admin/projects/new" className="adm-btn adm-btn--primary">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add Project
+          </Link>
+        </div>
       </div>
 
-      {/* Search */}
+      {error && (
+        <div style={{ background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.3)", borderRadius: 10, padding: "10px 14px", color: "#d97706", fontSize: ".82rem", marginBottom: 16 }}>
+          {error}
+        </div>
+      )}
+
       <div style={{ marginBottom: 20 }}>
         <div className="adm-search">
           <span className="adm-search__icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
-          <input className="adm-search__input" placeholder="Search projects..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          <input className="adm-search__input" placeholder="Search projects…" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
       </div>
 
-      <div className="adm-card" style={{ padding: 0 }}>
-        <div className="adm-table-wrap">
-          <table className="adm-table">
-            <thead>
-              <tr><th>Project</th><th>Category</th><th>Price</th><th>Level</th><th>Status</th><th>Active</th><th>Actions</th></tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 ? (
-                <tr><td colSpan={7}>
-                  <div className="adm-empty">
-                    <div className="adm-empty__icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg></div>
-                    <h3>No projects found</h3><p>Try a different search or add a new project.</p>
-                  </div>
-                </td></tr>
-              ) : filtered.map((p) => (
-                <tr key={p.id} style={{ cursor: "pointer" }} onClick={() => navigate(`/admin/projects/edit/${p.id}`)}>
-                  <td>
-                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                      <div style={{ width: 48, height: 36, borderRadius: 6, overflow: "hidden", border: "1px solid #e2e8f0", flexShrink: 0 }}>
-                        {p.screenshots?.[0]
-                          ? <img src={p.screenshots[0]} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                          : <div style={{ width: "100%", height: "100%", background: "linear-gradient(135deg,#f0faff,#fdf0ff)", display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8" }}>
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/></svg>
-                            </div>
-                        }
-                      </div>
-                      <div>
-                        <div style={{ fontWeight: 600, fontSize: ".875rem", color: "#0f172a" }}>{p.title}</div>
-                        {p.badge && <span className="adm-badge adm-badge--blue" style={{ marginTop: 2 }}>{p.badge}</span>}
-                      </div>
-                    </div>
-                  </td>
-                  <td><span className="adm-badge adm-badge--gray">{p.category}</span></td>
-                  <td>
-                    <div style={{ fontWeight: 700, color: "#009fd4" }}>₹{p.price.toLocaleString("en-IN")}</div>
-                    <div style={{ fontSize: ".75rem", color: "#94a3b8", textDecoration: "line-through" }}>₹{p.originalPrice.toLocaleString("en-IN")}</div>
-                  </td>
-                  <td><span style={{ fontSize: ".78rem", fontWeight: 600, color: LEVEL_COLORS[p.level] }}>{p.level}</span></td>
-                  <td>
-                    {p.soldOut
-                      ? <span className="adm-badge adm-badge--red">Sold Out</span>
-                      : <span className="adm-badge adm-badge--green">Available</span>}
-                  </td>
-                  <td>
-                    <label className="adm-toggle">
-                      <div className={`adm-toggle__track ${p.active ? "adm-toggle__track--on" : ""}`} onClick={(e) => { e.stopPropagation(); toggleActive(p.id, !p.active); }}>
-                        <div className="adm-toggle__thumb" />
-                      </div>
-                    </label>
-                  </td>
-                  <td>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <Link to={`/admin/projects/edit/${p.id}`} className="adm-btn adm-btn--ghost adm-btn--sm adm-btn--icon" title="Edit">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                      </Link>
-                      <button className="adm-btn adm-btn--danger adm-btn--sm adm-btn--icon" title="Delete" onClick={(e) => { e.stopPropagation(); setConfirmDelete(p.id); }}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {loading ? (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 60 }}>
+          <div style={{ width: 36, height: 36, borderRadius: "50%", border: "3px solid #e2e8f0", borderTopColor: "#009fd4", animation: "adm-spin .7s linear infinite" }} />
         </div>
-      </div>
+      ) : (
+        <div className="adm-card" style={{ padding: 0 }}>
+          <div className="adm-table-wrap">
+            <table className="adm-table">
+              <thead>
+                <tr><th>Project</th><th>Category</th><th>Price</th><th>Level</th><th>Status</th><th>Active</th><th>Actions</th></tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr><td colSpan={7}>
+                    <div className="adm-empty">
+                      <div className="adm-empty__icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg></div>
+                      <h3>No projects found</h3><p>Try a different search or add a new project.</p>
+                    </div>
+                  </td></tr>
+                ) : filtered.map((p) => (
+                  <tr key={p.id} style={{ cursor: "pointer" }} onClick={() => navigate(`/admin/projects/edit/${p.id}`)}>
+                    <td>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <div style={{ width: 48, height: 36, borderRadius: 6, overflow: "hidden", border: "1px solid #e2e8f0", flexShrink: 0 }}>
+                          {(p.screenshots?.[0] || p.media?.[0]?.url)
+                            ? <img src={p.screenshots?.[0] || p.media?.[0]?.url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                            : <div style={{ width: "100%", height: "100%", background: "linear-gradient(135deg,#f0faff,#fdf0ff)", display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8" }}>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/></svg>
+                              </div>
+                          }
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: ".875rem", color: "#0f172a" }}>{p.title}</div>
+                          {p.badge && <span className="adm-badge adm-badge--blue" style={{ marginTop: 2 }}>{p.badge}</span>}
+                        </div>
+                      </div>
+                    </td>
+                    <td><span className="adm-badge adm-badge--gray">{p.category}</span></td>
+                    <td>
+                      <div style={{ fontWeight: 700, color: "#009fd4" }}>₹{Number(p.price).toLocaleString("en-IN")}</div>
+                      <div style={{ fontSize: ".75rem", color: "#94a3b8", textDecoration: "line-through" }}>₹{Number(p.originalPrice ?? p.original_price ?? 0).toLocaleString("en-IN")}</div>
+                    </td>
+                    <td><span style={{ fontSize: ".78rem", fontWeight: 600, color: LEVEL_COLORS[p.level] || "#64748b" }}>{p.level}</span></td>
+                    <td>
+                      {p.soldOut || p.sold_out
+                        ? <span className="adm-badge adm-badge--red">Sold Out</span>
+                        : <span className="adm-badge adm-badge--green">Available</span>}
+                    </td>
+                    <td>
+                      <label className="adm-toggle">
+                        <div className={`adm-toggle__track ${p.active ? "adm-toggle__track--on" : ""}`}
+                          onClick={(e) => { e.stopPropagation(); if (!toggling) toggleActive(p.id, !p.active); }}>
+                          <div className="adm-toggle__thumb" />
+                        </div>
+                      </label>
+                    </td>
+                    <td>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <Link to={`/admin/projects/edit/${p.id}`} className="adm-btn adm-btn--ghost adm-btn--sm adm-btn--icon" title="Edit" onClick={(e) => e.stopPropagation()}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        </Link>
+                        <button className="adm-btn adm-btn--danger adm-btn--sm adm-btn--icon" title="Delete"
+                          disabled={deleting === p.id}
+                          onClick={(e) => { e.stopPropagation(); setConfirmDelete(p.id); }}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
-      {/* Delete confirm modal */}
       {confirmDelete && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
           <div style={{ background: "#fff", borderRadius: 16, padding: 32, maxWidth: 400, width: "100%", boxShadow: "0 20px 60px rgba(0,0,0,.2)" }}>
@@ -719,7 +799,9 @@ export function AdminProjectsList() {
             <p style={{ color: "#64748b", fontSize: ".875rem", marginBottom: 24 }}>This action cannot be undone. The project will be permanently removed from the store.</p>
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
               <button className="adm-btn adm-btn--ghost" onClick={() => setConfirmDelete(null)}>Cancel</button>
-              <button className="adm-btn adm-btn--danger" onClick={() => handleDelete(confirmDelete)}>Delete</button>
+              <button className="adm-btn adm-btn--danger" disabled={!!deleting} onClick={() => handleDelete(confirmDelete)}>
+                {deleting ? "Deleting…" : "Delete"}
+              </button>
             </div>
           </div>
         </div>
@@ -731,6 +813,9 @@ export function AdminProjectsList() {
 // ─── Add Project ──────────────────────────────────────────────────────────────
 export function AdminAddProject() {
   const navigate = useNavigate();
+  const [saving, setSaving] = useState(false);
+  const [apiError, setApiError] = useState("");
+
   const initial = {
     title: "", description: "", longDesc: "", category: "Web Development",
     level: "Intermediate", delivery: "1 week", price: "", originalPrice: "",
@@ -738,6 +823,19 @@ export function AdminAddProject() {
     media: [], screenshots: [], demoVideo: "", projectFiles: [],
     badge: "", active: true, soldOut: false,
   };
+
+  const handleSave = async (data) => {
+    setSaving(true);
+    setApiError("");
+    try {
+      await createAdminProject(data);
+      navigate("/admin/projects");
+    } catch (err) {
+      setApiError(extractApiError(err));
+      setSaving(false);
+    }
+  };
+
   return (
     <AdminLayout>
       <div className="adm-page-header">
@@ -747,8 +845,13 @@ export function AdminAddProject() {
         </div>
         <Link to="/admin/projects" className="adm-btn adm-btn--ghost">← Back to Projects</Link>
       </div>
-      <ProjectForm initial={initial} isEdit={false}
-        onSave={(data) => { addProject(data); navigate("/admin/projects"); }}
+      {apiError && (
+        <div style={{ background: "rgba(239,68,68,.08)", border: "1px solid rgba(239,68,68,.2)", borderRadius: 10, padding: "12px 16px", color: "#dc2626", fontSize: ".875rem", marginBottom: 20 }}>
+          {apiError}
+        </div>
+      )}
+      <ProjectForm initial={initial} isEdit={false} saving={saving}
+        onSave={handleSave}
         onCancel={() => navigate("/admin/projects")} />
     </AdminLayout>
   );
@@ -758,11 +861,71 @@ export function AdminAddProject() {
 export function AdminEditProject() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const project = getProjects().find((p) => p.id === Number(id));
+  const [project,  setProject]  = useState(null);
+  const [loading,  setLoading]  = useState(true);
+  const [saving,   setSaving]   = useState(false);
+  const [apiError, setApiError] = useState("");
+
+  useEffect(() => {
+    fetchAdminProjects()
+      .then((data) => {
+        const raw = data.find((p) => String(p.id) === String(id));
+        if (!raw) { setProject(null); return; }
+        // Normalise backend fields → form fields
+        setProject({
+          ...raw,
+          active:        raw.status === "active" || raw.active === true,
+          soldOut:       raw.is_sold_out ?? raw.soldOut ?? false,
+          price:         parseFloat(raw.sale_price      ?? raw.price         ?? "") || "",
+          originalPrice: parseFloat(raw.original_price  ?? raw.originalPrice ?? "") || "",
+          description:   raw.short_description || raw.description || "",
+          longDesc:      raw.description       || raw.long_desc   || "",
+          category:      raw.category_display  || raw.category    || "Web Development",
+          level:         raw.level_display     || raw.level       || "Intermediate",
+          delivery:      raw.delivery_time     || raw.delivery    || "",
+          badge:         raw.badge_display !== "None" ? (raw.badge_display || raw.badge || "") : "",
+          tags:          Array.isArray(raw.technologies)   ? raw.technologies   : (raw.tags     || []),
+          features:      Array.isArray(raw.key_features)   ? raw.key_features   : (raw.features || []),
+          includes:      Array.isArray(raw.whats_included) ? raw.whats_included : (raw.includes || []),
+          screenshots:   Array.isArray(raw.screenshots)    ? raw.screenshots    : [],
+          media:         Array.isArray(raw.media)          ? raw.media          : [],
+          projectFiles:  Array.isArray(raw.project_links)  ? raw.project_links  : [],
+          demoVideo:     raw.demo_video_url || raw.demoVideo || "",
+          slug:          raw.slug || String(raw.id),
+        });
+      })
+      .catch(() => {
+        setProject(null);
+      })
+      .finally(() => setLoading(false));
+  }, [id]);
+
+  const handleSave = async (data) => {
+    setSaving(true);
+    setApiError("");
+    try {
+      await updateAdminProject(id, data);
+      navigate("/admin/projects");
+    } catch (err) {
+      setApiError(extractApiError(err));
+      setSaving(false);
+    }
+  };
+
+  if (loading) return (
+    <AdminLayout>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 80 }}>
+        <div style={{ width: 36, height: 36, borderRadius: "50%", border: "3px solid #e2e8f0", borderTopColor: "#009fd4", animation: "adm-spin .7s linear infinite" }} />
+      </div>
+    </AdminLayout>
+  );
 
   if (!project) return (
     <AdminLayout>
-      <div className="adm-empty"><h3>Project not found</h3><Link to="/admin/projects" className="adm-btn adm-btn--primary" style={{ marginTop: 12 }}>Back</Link></div>
+      <div className="adm-empty">
+        <h3>Project not found</h3>
+        <Link to="/admin/projects" className="adm-btn adm-btn--primary" style={{ marginTop: 12 }}>Back</Link>
+      </div>
     </AdminLayout>
   );
 
@@ -775,8 +938,13 @@ export function AdminEditProject() {
         </div>
         <Link to="/admin/projects" className="adm-btn adm-btn--ghost">← Back to Projects</Link>
       </div>
-      <ProjectForm initial={project} isEdit={true}
-        onSave={(data) => { updateProject(project.id, data); navigate("/admin/projects"); }}
+      {apiError && (
+        <div style={{ background: "rgba(239,68,68,.08)", border: "1px solid rgba(239,68,68,.2)", borderRadius: 10, padding: "12px 16px", color: "#dc2626", fontSize: ".875rem", marginBottom: 20 }}>
+          {apiError}
+        </div>
+      )}
+      <ProjectForm initial={project} isEdit={true} saving={saving}
+        onSave={handleSave}
         onCancel={() => navigate("/admin/projects")} />
     </AdminLayout>
   );

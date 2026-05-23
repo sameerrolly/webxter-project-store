@@ -4,6 +4,15 @@ import { studentLogoutApi, getStoredUser } from "./StudentApi";
 import { getStudentTickets } from "./studentStore";
 import "./student.css";
 
+const BASE = import.meta.env.VITE_API_URL;
+
+// Resolve a relative backend media path to a full URL
+function resolveAvatar(url) {
+  if (!url) return "";
+  if (url.startsWith("http") || url.startsWith("data:")) return url;
+  return `${BASE}${url.startsWith("/") ? "" : "/"}${url}`;
+}
+
 // ─── Chatbot knowledge base ───────────────────────────────────────────────────
 const BOT_NAME = "Webxter AI";
 const QUICK_REPLIES = [
@@ -337,37 +346,24 @@ export default function StudentLayout({ children, title }) {
 
   const initials = displayName.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2) || "S";
 
-  // Helper: read profile (including avatar) from localStorage for a given email
-  const readProfile = (email) => {
-    if (!email) return {};
-    try {
-      const raw = localStorage.getItem(`wx_student_profile_${email.toLowerCase()}`);
-      return raw ? JSON.parse(raw) : {};
-    } catch { return {}; }
-  };
+  // Avatar — read directly from wx_user (backend URL stored there after login/upload)
+  const getAvatarUrl = () => resolveAvatar(getStoredUser()?.avatar || "");
+  const [avatarUrl, setAvatarUrl] = useState(getAvatarUrl);
 
-  // Profile state — initialised from localStorage immediately so avatar shows on first render
-  const [profile, setProfile] = useState(() => readProfile(getStoredUser()?.email));
-
-  // Re-read profile whenever the session email resolves (covers post-login navigation)
+  // Refresh avatar whenever wx_user changes (login, upload, remove)
   useEffect(() => {
-    if (session?.email) {
-      setProfile(readProfile(session.email));
-    }
-  }, [session?.email]);
-
-  // Listen for profile saves (same-tab custom event) and cross-tab storage events
-  useEffect(() => {
-    const refresh = () => {
-      const email = getStoredUser()?.email || session?.email;
-      setProfile(readProfile(email));
-    };
-    window.addEventListener("wx-profile-updated", refresh);
+    const refresh = () => setAvatarUrl(getAvatarUrl());
+    window.addEventListener("wx-avatar-updated", refresh);
     window.addEventListener("storage", refresh);
     return () => {
-      window.removeEventListener("wx-profile-updated", refresh);
+      window.removeEventListener("wx-avatar-updated", refresh);
       window.removeEventListener("storage", refresh);
     };
+  }, []);
+
+  // Also refresh when session email resolves (post-login navigation)
+  useEffect(() => {
+    setAvatarUrl(getAvatarUrl());
   }, [session?.email]);
 
   const handleLogout = async () => {
@@ -411,9 +407,11 @@ export default function StudentLayout({ children, title }) {
 
         {/* Student info */}
         <div className="sd-sidebar__student">
-          <div className={`sd-nav-avatar${profile?.avatar ? " sd-nav-avatar--photo" : ""}`}>
-            {profile?.avatar
-              ? <img src={profile.avatar} alt={initials} className="sd-nav-avatar__img" />
+          <div className={`sd-nav-avatar${avatarUrl ? " sd-nav-avatar--photo" : ""}`}>
+            {avatarUrl
+              ? <img src={avatarUrl} alt={initials} className="sd-nav-avatar__img"
+                  onError={(e) => { e.currentTarget.style.display = "none"; }}
+                />
               : <span>{initials}</span>
             }
           </div>
@@ -519,9 +517,11 @@ export default function StudentLayout({ children, title }) {
               )}
             </div>
 
-            <div className={`sd-nav-avatar${profile?.avatar ? " sd-nav-avatar--photo" : ""}`} style={{ cursor: "default" }}>
-              {profile?.avatar
-                ? <img src={profile.avatar} alt={initials} className="sd-nav-avatar__img" />
+            <div className={`sd-nav-avatar${avatarUrl ? " sd-nav-avatar--photo" : ""}`} style={{ cursor: "default" }}>
+              {avatarUrl
+                ? <img src={avatarUrl} alt={initials} className="sd-nav-avatar__img"
+                    onError={(e) => { e.currentTarget.style.display = "none"; }}
+                  />
                 : <span>{initials}</span>
               }
             </div>

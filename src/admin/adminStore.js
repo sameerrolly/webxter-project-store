@@ -10,6 +10,21 @@ const KEYS = {
   COUPONS:  "wx_admin_coupons",
 };
 
+// One-time migration: clear old cached projects so the API is the source of truth
+// This runs once when the module loads. Remove this after all users have migrated.
+(function clearLegacyProjectCache() {
+  try {
+    const raw = localStorage.getItem("wx_admin_projects");
+    if (raw) {
+      const projects = JSON.parse(raw);
+      // If it contains the old default seeded data (id=1 Library Management), wipe it
+      if (Array.isArray(projects) && projects.some((p) => p.id === 1 && p.slug === "library-management-system")) {
+        localStorage.removeItem("wx_admin_projects");
+      }
+    }
+  } catch { /* ignore */ }
+})();
+
 // ─── Default projects (seeded from the original static list) ─────────────────
 const DEFAULT_PROJECTS = [
   {
@@ -238,8 +253,10 @@ export function isAdminLoggedIn() {
 export function getProjects() {
   try {
     const raw = localStorage.getItem(KEYS.PROJECTS);
-    return raw ? JSON.parse(raw) : DEFAULT_PROJECTS;
-  } catch { return DEFAULT_PROJECTS; }
+    // Return empty array when nothing is stored — no default seeding
+    // Projects now come from the Django backend API, not localStorage
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
 }
 
 export function saveProjects(projects) {

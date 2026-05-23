@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { useCart } from "./CartContext";
-import { getProjects } from "./admin/adminStore";
+import { getProjectsApi } from "./student/StudentApi";
 import "./StudentProjects.css";
 
 // ─── SVG Icon Library ─────────────────────────────────────────────────────────
@@ -637,11 +637,32 @@ function ProjectsSection({ onAddToCart }) {
   const [activeCategory, setActiveCategory] = useState("All");
   const [search, setSearch] = useState("");
   const [isMobile, setIsMobile] = useState(false);
-  // Load from adminStore so admin edits reflect live
-  const [PROJECTS, setPROJECTS] = useState(() => getProjects().filter((p) => p.active));
+  // Start empty — only API data is shown, no localStorage cache
+  const [PROJECTS, setPROJECTS] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [apiError, setApiError] = useState("");
 
+  // Fetch from backend on mount — API is the single source of truth
   useEffect(() => {
-    setPROJECTS(getProjects().filter((p) => p.active));
+    let cancelled = false;
+    setLoading(true);
+    setApiError("");
+
+    getProjectsApi()
+      .then((data) => {
+        if (cancelled) return;
+        const list = (Array.isArray(data) ? data : (data.results || []))
+          .filter((p) => p.active);
+        setPROJECTS(list);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setApiError("Could not connect to server. Please make sure the backend is running.");
+        setPROJECTS([]); // show empty, not stale cache
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -690,11 +711,27 @@ function ProjectsSection({ onAddToCart }) {
           />
         </div>
 
+        {/* Loading spinner */}
+        {loading && (
+          <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}>
+            <div style={{ width: 40, height: 40, borderRadius: "50%", border: "3px solid #e2e8f0", borderTopColor: "#009fd4", animation: "wx-spin .7s linear infinite" }} />
+            <style>{`@keyframes wx-spin { to { transform: rotate(360deg); } }`}</style>
+          </div>
+        )}
+
+        {/* API warning (non-blocking) */}
+        {!loading && apiError && (
+          <div style={{ background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.3)", borderRadius: 10, padding: "10px 16px", color: "#d97706", fontSize: ".82rem", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            {apiError}
+          </div>
+        )}
+
         {/* Mobile → swiper | Desktop → grid */}
-        {isMobile ? (
-          <MobileSwiper items={filtered} onAddToCart={onAddToCart} />
-        ) : (
-          filtered.length === 0 ? (
+        {!loading && (
+          isMobile ? (
+            <MobileSwiper items={filtered} onAddToCart={onAddToCart} />
+          ) : filtered.length === 0 ? (
             <div className="wx-empty">
               <span className="wx-empty__icon">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

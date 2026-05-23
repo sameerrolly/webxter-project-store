@@ -1,47 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { adminLogout, getOrders } from "./adminStore";
+import { adminApiLogout, getAdminUser } from "./adminApi";
 import "./admin.css";
-
-// ─── Build admin notifications ────────────────────────────────────────────────
-function getAdminNotifications() {
-  const items = [];
-  const orders = getOrders();
-
-  // Pending orders
-  orders.filter((o) => o.status === "pending").forEach((o) => {
-    items.push({
-      id: `ord-${o.id}`,
-      type: "order",
-      title: "New Pending Order",
-      body: `${o.customer} — ${o.project}`,
-      date: o.date,
-      link: "/admin/orders",
-    });
-  });
-
-  // Open support tickets from all students
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith("wx_student_tickets_")) {
-        const tickets = JSON.parse(localStorage.getItem(key) || "[]");
-        tickets.filter((t) => t.status === "open").forEach((t) => {
-          items.push({
-            id: `tkt-${t.id}`,
-            type: "ticket",
-            title: "Open Support Ticket",
-            body: `${t.email || "Student"} — ${t.subject}`,
-            date: t.createdAt,
-            link: "/admin/orders",
-          });
-        });
-      }
-    }
-  } catch { /* ignore */ }
-
-  return items;
-}
 
 const NAV = [
   {
@@ -67,35 +27,35 @@ const NAV = [
 ];
 
 export default function AdminLayout({ children }) {
-  const location = useLocation();
-  const navigate = useNavigate();
+  const location  = useLocation();
+  const navigate  = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [notifOpen, setNotifOpen]     = useState(false);
+  const [notifOpen,   setNotifOpen]   = useState(false);
   const notifRef = useRef(null);
 
-  const notifications = getAdminNotifications();
-  const unread = notifications.length;
+  const user    = getAdminUser();
+  const initials = (user?.username || user?.first_name || "A")[0].toUpperCase();
 
-  // Close on outside click
+  // Close notification dropdown on outside click
   useEffect(() => {
-    const handler = (e) => {
+    const h = (e) => {
       if (notifRef.current && !notifRef.current.contains(e.target)) setNotifOpen(false);
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
   }, []);
 
-  const handleLogout = () => {
-    adminLogout();
+  const handleLogout = async () => {
+    await adminApiLogout();
     navigate("/admin/login");
   };
 
   return (
     <div className="adm-shell">
-      {/* ── Sidebar ── */}
       {sidebarOpen && <div className="adm-backdrop" onClick={() => setSidebarOpen(false)} />}
+
+      {/* ── Sidebar ── */}
       <aside className={`adm-sidebar ${sidebarOpen ? "adm-sidebar--open" : ""}`}>
-        {/* Brand */}
         <div className="adm-sidebar__brand">
           <div className="adm-sidebar__logo">
             <div className="adm-sidebar__logo-icon">W</div>
@@ -106,7 +66,6 @@ export default function AdminLayout({ children }) {
           </div>
         </div>
 
-        {/* Nav */}
         <nav className="adm-sidebar__nav">
           {NAV.map((item) => {
             const active = location.pathname.startsWith(item.path);
@@ -121,7 +80,6 @@ export default function AdminLayout({ children }) {
           })}
         </nav>
 
-        {/* Bottom */}
         <div className="adm-sidebar__bottom">
           <a href="/" target="_blank" rel="noopener noreferrer" className="adm-nav-item">
             <span className="adm-nav-item__icon">
@@ -140,7 +98,6 @@ export default function AdminLayout({ children }) {
 
       {/* ── Main ── */}
       <div className="adm-main">
-        {/* Topbar */}
         <header className="adm-topbar">
           <button className="adm-topbar__menu" onClick={() => setSidebarOpen(true)} aria-label="Menu">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -151,65 +108,36 @@ export default function AdminLayout({ children }) {
             {NAV.find((n) => location.pathname.startsWith(n.path))?.label || "Admin"}
           </div>
           <div className="adm-topbar__right">
-            {/* ── Notification bell ── */}
+            {/* Notification bell — static placeholder; wire to API when backend supports it */}
             <div className="adm-notif" ref={notifRef}>
               <button
-                className={`adm-notif__btn${unread > 0 ? " adm-notif__btn--active" : ""}`}
+                className="adm-notif__btn"
                 onClick={() => setNotifOpen((o) => !o)}
-                aria-label={`Notifications${unread > 0 ? ` (${unread})` : ""}`}
+                aria-label="Notifications"
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
                   <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
                 </svg>
-                {unread > 0 && <span className="adm-notif__badge">{unread > 9 ? "9+" : unread}</span>}
               </button>
-
               {notifOpen && (
                 <div className="adm-notif__dropdown">
-                  <div className="adm-notif__header">
-                    <span>Notifications</span>
-                    {unread > 0 && <span className="adm-notif__count">{unread} new</span>}
+                  <div className="adm-notif__header"><span>Notifications</span></div>
+                  <div className="adm-notif__empty">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                      <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                    </svg>
+                    <p>All caught up!</p>
                   </div>
-                  {notifications.length === 0 ? (
-                    <div className="adm-notif__empty">
-                      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-                        <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-                      </svg>
-                      <p>All caught up!</p>
-                    </div>
-                  ) : (
-                    <div className="adm-notif__list">
-                      {notifications.map((n) => (
-                        <Link
-                          key={n.id}
-                          to={n.link}
-                          className="adm-notif__item"
-                          onClick={() => setNotifOpen(false)}
-                        >
-                          <div className={`adm-notif__dot adm-notif__dot--${n.type}`} />
-                          <div className="adm-notif__text">
-                            <div className="adm-notif__item-title">{n.title}</div>
-                            <div className="adm-notif__item-body">{n.body}</div>
-                            <div className="adm-notif__item-date">{n.date}</div>
-                          </div>
-                        </Link>
-                      ))}
-                    </div>
-                  )}
                 </div>
               )}
             </div>
-
-            <div className="adm-topbar__avatar">A</div>
+            <div className="adm-topbar__avatar" title={user?.username || "Admin"}>{initials}</div>
           </div>
         </header>
 
-        {/* Page content */}
-        <div className="adm-content">
-          {children}
-        </div>
+        <div className="adm-content">{children}</div>
       </div>
     </div>
   );

@@ -1,20 +1,53 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import AdminLayout from "./AdminLayout";
-import { getSettings, saveSettings } from "./adminStore";
+import { fetchAdminSettings, saveAdminSettings, extractApiError } from "./adminApi";
+import { getSettings, saveSettings } from "./adminStore"; // local fallback
 
 export default function AdminSettings() {
-  const [settings, setSettings] = useState(() => getSettings());
-  const [saved, setSaved] = useState(false);
+  const [settings, setSettings] = useState(null);
+  const [loading,  setLoading]  = useState(true);
+  const [saving,   setSaving]   = useState(false);
+  const [saved,    setSaved]    = useState(false);
+  const [error,    setError]    = useState("");
 
-  const set = (key) => (e) => setSettings((s) => ({ ...s, [key]: e.target.value }));
+  useEffect(() => {
+    fetchAdminSettings()
+      .then((data) => {
+        setSettings({ ...getSettings(), ...data });
+      })
+      .catch(() => {
+        // API not ready — fall back to localStorage
+        setSettings(getSettings());
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  const set       = (key) => (e) => setSettings((s) => ({ ...s, [key]: e.target.value }));
   const setToggle = (key) => setSettings((s) => ({ ...s, [key]: !s[key] }));
 
-  const handleSave = (e) => {
+  const handleSave = async (e) => {
     e.preventDefault();
-    saveSettings(settings);
+    setSaving(true);
+    setError("");
+    try {
+      await saveAdminSettings(settings);
+    } catch (err) {
+      // Non-critical — save locally as fallback
+      setError(extractApiError(err) + " (saved locally as fallback)");
+    }
+    saveSettings(settings); // always persist locally too
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
+    setSaving(false);
   };
+
+  if (loading) return (
+    <AdminLayout>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 80 }}>
+        <div style={{ width: 36, height: 36, borderRadius: "50%", border: "3px solid #e2e8f0", borderTopColor: "#009fd4", animation: "adm-spin .7s linear infinite" }} />
+      </div>
+    </AdminLayout>
+  );
 
   return (
     <AdminLayout>
@@ -25,6 +58,12 @@ export default function AdminSettings() {
         </div>
       </div>
 
+      {error && (
+        <div style={{ background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.3)", borderRadius: 10, padding: "10px 14px", color: "#d97706", fontSize: ".82rem", marginBottom: 20 }}>
+          {error}
+        </div>
+      )}
+
       <form onSubmit={handleSave} className="adm-form">
 
         {/* Site info */}
@@ -33,23 +72,23 @@ export default function AdminSettings() {
           <div className="adm-form__grid">
             <div className="adm-field">
               <label className="adm-field__label">Site Name</label>
-              <input className="adm-field__input" value={settings.siteName} onChange={set("siteName")} />
+              <input className="adm-field__input" value={settings.siteName || ""} onChange={set("siteName")} />
             </div>
             <div className="adm-field">
               <label className="adm-field__label">Tagline</label>
-              <input className="adm-field__input" value={settings.tagline} onChange={set("tagline")} />
+              <input className="adm-field__input" value={settings.tagline || ""} onChange={set("tagline")} />
             </div>
             <div className="adm-field">
               <label className="adm-field__label">Contact Email</label>
-              <input type="email" className="adm-field__input" value={settings.email} onChange={set("email")} />
+              <input type="email" className="adm-field__input" value={settings.email || ""} onChange={set("email")} />
             </div>
             <div className="adm-field">
               <label className="adm-field__label">Phone Number</label>
-              <input className="adm-field__input" value={settings.phone} onChange={set("phone")} />
+              <input className="adm-field__input" value={settings.phone || ""} onChange={set("phone")} />
             </div>
             <div className="adm-field">
               <label className="adm-field__label">WhatsApp Number</label>
-              <input className="adm-field__input" value={settings.whatsapp} onChange={set("whatsapp")} />
+              <input className="adm-field__input" value={settings.whatsapp || ""} onChange={set("whatsapp")} />
             </div>
           </div>
         </div>
@@ -60,13 +99,13 @@ export default function AdminSettings() {
           <div className="adm-form__grid">
             <div className="adm-field">
               <label className="adm-field__label">Coupon Code</label>
-              <input className="adm-field__input" value={settings.couponCode} onChange={set("couponCode")}
+              <input className="adm-field__input" value={settings.couponCode || ""} onChange={set("couponCode")}
                 style={{ textTransform: "uppercase", fontWeight: 700, letterSpacing: 1 }} />
               <p className="adm-field__hint">Customers enter this at checkout</p>
             </div>
             <div className="adm-field">
               <label className="adm-field__label">Discount (%)</label>
-              <input type="number" className="adm-field__input" value={settings.couponDiscount} onChange={set("couponDiscount")} min="0" max="100" />
+              <input type="number" className="adm-field__input" value={settings.couponDiscount || 0} onChange={set("couponDiscount")} min="0" max="100" />
             </div>
           </div>
           <div style={{ marginTop: 12, background: "rgba(0,159,212,.06)", border: "1px solid rgba(0,159,212,.2)", borderRadius: 10, padding: "12px 16px", fontSize: ".85rem", color: "#334155" }}>
@@ -88,7 +127,7 @@ export default function AdminSettings() {
             </div>
             <div className="adm-field adm-form__full">
               <label className="adm-field__label">Marquee Text</label>
-              <input className="adm-field__input" value={settings.marqueeText} onChange={set("marqueeText")} />
+              <input className="adm-field__input" value={settings.marqueeText || ""} onChange={set("marqueeText")} />
             </div>
           </div>
           {settings.showMarquee && (
@@ -114,16 +153,6 @@ export default function AdminSettings() {
           )}
         </div>
 
-        {/* Admin credentials info */}
-        <div className="adm-card">
-          <div style={{ fontWeight: 700, fontSize: ".95rem", marginBottom: 12, color: "#0f172a" }}>Admin Credentials</div>
-          <div style={{ background: "#f8f9fb", border: "1px solid #e2e8f0", borderRadius: 10, padding: "14px 16px", fontSize: ".85rem", color: "#64748b", lineHeight: 1.7 }}>
-            <div>Username: <strong style={{ color: "#0f172a" }}>admin</strong></div>
-            <div>Password: <strong style={{ color: "#0f172a" }}>webxter@2024</strong></div>
-            <div style={{ marginTop: 6, fontSize: ".78rem", color: "#94a3b8" }}>To change credentials, update <code>ADMIN_CREDENTIALS</code> in <code>src/admin/adminStore.js</code></div>
-          </div>
-        </div>
-
         {/* Save */}
         <div style={{ display: "flex", gap: 12, alignItems: "center", justifyContent: "flex-end" }}>
           {saved && (
@@ -132,9 +161,11 @@ export default function AdminSettings() {
               Settings saved!
             </div>
           )}
-          <button type="submit" className="adm-btn adm-btn--primary">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-            Save Settings
+          <button type="submit" className="adm-btn adm-btn--primary" disabled={saving}>
+            {saving
+              ? <span style={{ width: 16, height: 16, borderRadius: "50%", border: "2px solid rgba(255,255,255,.3)", borderTopColor: "#fff", animation: "adm-spin .7s linear infinite", display: "inline-block" }} />
+              : <><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Save Settings</>
+            }
           </button>
         </div>
       </form>

@@ -12,6 +12,28 @@ export function getStoredUser()   {
   catch { return null; }
 }
 
+/**
+ * Persist user object to wx_user and fire a storage event so all listeners
+ * (CartProvider, StudentLayout avatar) update immediately in the same tab.
+ */
+export function updateStoredUser(patch) {
+  const current = getStoredUser() || {};
+  const updated = { ...current, ...patch };
+  const prev = localStorage.getItem("wx_user");
+  localStorage.setItem("wx_user", JSON.stringify(updated));
+  // Same-tab listeners (StorageEvent only fires for OTHER tabs normally)
+  try {
+    window.dispatchEvent(new StorageEvent("storage", {
+      key: "wx_user",
+      oldValue: prev,
+      newValue: JSON.stringify(updated),
+    }));
+  } catch {}
+  // Also fire a dedicated avatar event so StudentLayout can react
+  window.dispatchEvent(new CustomEvent("wx-avatar-updated"));
+  return updated;
+}
+
 function storeTokens({ access, refresh, user }) {
   localStorage.setItem("wx_access", access);
   if (refresh) localStorage.setItem("wx_refresh", refresh);
@@ -166,6 +188,10 @@ export async function studentLoginApi(email, password) {
     body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
   });
 
+  const contentType = res.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    throw new Error("Server error. Please try again later.");
+  }
   const data = await res.json();
   if (!res.ok) {
     throw new Error(extractError(data));
@@ -202,11 +228,18 @@ export async function studentLogoutApi() {
 /**
  * Get the current user's profile.
  * GET /api/v1/auth/profile/
+ * Also syncs the returned data (including avatar URL) into wx_user cache.
  */
 export async function getProfileApi() {
   const res = await authFetch(`${BASE}/api/v1/auth/profile/`);
-  if (!res.ok) throw new Error("Failed to load profile");
-  return res.json();
+  const contentType = res.headers.get("content-type") || "";
+  if (!res.ok || !contentType.includes("application/json")) {
+    throw new Error("Failed to load profile");
+  }
+  const data = await res.json();
+  // Keep wx_user in sync so avatar persists after page refresh
+  updateStoredUser(data);
+  return data;
 }
 
 /**
@@ -218,14 +251,119 @@ export async function updateProfileApi(fields) {
     method: "PATCH",
     body: JSON.stringify(fields),
   });
+  const contentType = res.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    throw new Error(`Server error (${res.status}) while saving profile.`);
+  }
   const data = await res.json();
   if (!res.ok) throw new Error(extractError(data));
 
-  // Keep cached user in sync
-  const current = getStoredUser() || {};
-  localStorage.setItem("wx_user", JSON.stringify({ ...current, ...data }));
+  // Keep cached user in sync (preserve existing avatar)
+  updateStoredUser(data);
 
   return data;
+}
+
+/**
+ * Upload a profile avatar image.
+ * PATCH /api/v1/auth/avatar/   (multipart/form-data, field name: "avatar")
+ *
+ * The backend should return the updated user object (or at minimum { avatar: "<url>" }).
+ * The avatar URL is saved into wx_user so it persists across logins.
+ */
+export async function uploadAvatarApi(file) {
+  const token = getAccessToken();
+  const formData = new FormData();
+  formData.append("avatar", file);
+
+  // Do NOT set Content-Type — browser sets it automatically with the correct boundary
+  let res = await fetch(`${BASE}/api/v1/auth/avatar/`, {
+    method: "PATCH",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+
+  // Retry once after token refresh on 401
+  if (res.status === 401) {
+    try {
+      const newToken = await refreshAccessToken();
+      res = await fetch(`${BASE}/api/v1/auth/avatar/`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${newToken}` },
+        body: formData,
+      });
+    } catch {
+      clearTokens();
+      window.location.href = "/student/login";
+      throw new Error("Session expired");
+    }
+  }
+
+  // Guard: if the response is HTML (endpoint missing / server error), give a clear message
+  const contentType = res.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    if (res.status === 404) throw new Error("Avatar endpoint not found on server (404). Ask your backend team to add PATCH /api/v1/auth/avatar/");
+    if (res.status === 405) throw new Error("Avatar endpoint exists but doesn't allow PATCH. Check backend URL config.");
+    if (res.status >= 500) throw new Error("Server error while uploading avatar. Please try again later.");
+    throw new Error(`Unexpected server response (${res.status}). Avatar upload failed.`);
+  }
+
+  const data = await res.json();
+  if (!res.ok) throw new Error(extractError(data));
+
+  // Persist the returned avatar URL (and any other updated fields) into wx_user
+  updateStoredUser(data);
+
+  return data;
+}
+
+/**
+ * Remove the profile avatar.
+ * Sends PATCH /api/v1/auth/avatar/ with avatar=null
+ * (uses the same endpoint as upload — no separate DELETE needed)
+ */
+export async function removeAvatarApi() {
+  const token = getAccessToken();
+
+  // Send a multipart form with an empty avatar field to clear it
+  const formData = new FormData();
+  formData.append("avatar", "");          // empty string signals "remove"
+
+  let res = await fetch(`${BASE}/api/v1/auth/avatar/`, {
+    method: "PATCH",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+
+  // Retry once on 401
+  if (res.status === 401) {
+    try {
+      const newToken = await refreshAccessToken();
+      res = await fetch(`${BASE}/api/v1/auth/avatar/`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${newToken}` },
+        body: formData,
+      });
+    } catch {
+      clearTokens();
+      window.location.href = "/student/login";
+      throw new Error("Session expired");
+    }
+  }
+
+  // 204 No Content or 200 — both are success
+  if (res.status === 204 || res.status === 200) {
+    updateStoredUser({ avatar: null });
+    return;
+  }
+
+  const contentType = res.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    throw new Error(`Server error (${res.status}) while removing avatar.`);
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(extractError(data));
+  updateStoredUser({ avatar: null });
 }
 
 /**
@@ -260,13 +398,63 @@ export async function getOrdersApi() {
 // ─── Projects endpoints ───────────────────────────────────────────────────────
 
 /**
- * List all available projects (public or authenticated — depends on backend config).
+ * List all available projects — public endpoint, no auth required.
  * GET /api/v1/projects/
+ * Normalises snake_case → camelCase so the card components work correctly.
  */
 export async function getProjectsApi() {
-  const res = await authFetch(`${BASE}/api/v1/projects/`);
-  if (!res.ok) throw new Error("Failed to load projects");
-  return res.json();
+  try {
+    const res = await fetch(`${BASE}/api/v1/projects/`, {
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const list = Array.isArray(data) ? data : (data.results || []);
+    return list.map(normaliseProject);
+  } catch (err) {
+    throw new Error("Failed to load projects: " + (err.message || "Network error"));
+  }
+}
+
+/** Normalise a project object from the backend (snake_case) to camelCase */
+function normaliseProject(p) {
+  const price         = parseFloat(p.sale_price      ?? p.price         ?? 0) || 0;
+  const originalPrice = parseFloat(p.original_price  ?? p.originalPrice ?? 0) || 0;
+
+  return {
+    ...p,
+    // IDs & routing
+    id:            p.id,
+    slug:          p.slug || String(p.id),
+
+    // Text
+    title:         p.title         || "",
+    description:   p.short_description || p.description || "",
+    longDesc:      p.description   || p.long_desc      || "",
+    category:      p.category_display || p.category    || "",
+    level:         p.level_display    || p.level        || "",
+    delivery:      p.delivery_time    || p.delivery     || "",
+    badge:         p.badge_display !== "None" ? (p.badge_display || p.badge || "") : "",
+
+    // Pricing
+    price,
+    originalPrice,
+    sale_price:    price,
+    original_price: originalPrice,
+
+    // Status — backend uses status:"active", frontend uses active:true
+    active:        p.status === "active" || p.active === true,
+    soldOut:       p.is_sold_out ?? p.soldOut ?? false,
+
+    // Arrays — backend uses different names
+    tags:          Array.isArray(p.technologies)   ? p.technologies   : (Array.isArray(p.tags)     ? p.tags     : []),
+    features:      Array.isArray(p.key_features)   ? p.key_features   : (Array.isArray(p.features) ? p.features : []),
+    includes:      Array.isArray(p.whats_included) ? p.whats_included : (Array.isArray(p.includes) ? p.includes : []),
+    screenshots:   Array.isArray(p.screenshots)    ? p.screenshots    : [],
+    media:         Array.isArray(p.media)          ? p.media          : [],
+    projectFiles:  Array.isArray(p.project_links)  ? p.project_links  : (Array.isArray(p.projectFiles) ? p.projectFiles : []),
+    demoVideo:     p.demo_video_url || p.demoVideo || "",
+  };
 }
 
 // ─── Utility ──────────────────────────────────────────────────────────────────

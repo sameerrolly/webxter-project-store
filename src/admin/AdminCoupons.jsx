@@ -1,6 +1,13 @@
 import React, { useState, useRef, useEffect } from "react";
 import AdminLayout from "./AdminLayout";
-import { getCoupons, addCoupon, updateCoupon, deleteCoupon, getAllStudents } from "./adminStore";
+import {
+  fetchAdminCoupons,
+  createAdminCoupon,
+  updateAdminCoupon,
+  deleteAdminCoupon,
+  extractApiError,
+} from "./adminApi";
+import { getAllStudents } from "./adminStore";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const today = () => new Date().toISOString().split("T")[0];
@@ -306,19 +313,34 @@ function CouponForm({ initial, onSave, onCancel, isEdit }) {
 
 // ─── Main Coupons Page ────────────────────────────────────────────────────────
 export default function AdminCoupons() {
-  const [coupons, setCoupons]       = useState(() => getCoupons());
-  const [view, setView]             = useState("list"); // "list" | "add" | "edit"
-  const [editing, setEditing]       = useState(null);
+  const [coupons,       setCoupons]       = useState([]);
+  const [loading,       setLoading]       = useState(true);
+  const [view,          setView]          = useState("list");
+  const [editing,       setEditing]       = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
-  const [search, setSearch]         = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [deleting,      setDeleting]      = useState(null);
+  const [search,        setSearch]        = useState("");
+  const [statusFilter,  setStatusFilter]  = useState("all");
   const students = getAllStudents();
 
-  const refresh = () => setCoupons(getCoupons());
+  const load = async () => {
+    setLoading(true);
+    try {
+      const data = await fetchAdminCoupons();
+      setCoupons(data);
+    } catch {
+      // fallback — show empty
+      setCoupons([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
 
   const filtered = coupons.filter((c) => {
     const matchSearch =
-      c.code.toLowerCase().includes(search.toLowerCase()) ||
+      (c.code || "").toLowerCase().includes(search.toLowerCase()) ||
       (c.description || "").toLowerCase().includes(search.toLowerCase());
     if (!matchSearch) return false;
     if (statusFilter === "all") return true;
@@ -330,10 +352,32 @@ export default function AdminCoupons() {
     active:    coupons.filter((c) => getCouponStatus(c).label === "Active").length,
     scheduled: coupons.filter((c) => getCouponStatus(c).label === "Scheduled").length,
     expired:   coupons.filter((c) => getCouponStatus(c).label === "Expired").length,
-    totalUses: coupons.reduce((s, c) => s + (c.usedCount || 0), 0),
+    totalUses: coupons.reduce((s, c) => s + (c.usedCount || c.used_count || 0), 0),
   };
 
   const getStudentName = (email) => students.find((s) => s.email === email)?.name || email;
+
+  const handleToggleActive = async (c) => {
+    try {
+      const updated = await updateAdminCoupon(c.id, { active: !c.active });
+      setCoupons((prev) => prev.map((x) => (x.id === c.id ? { ...x, ...updated } : x)));
+    } catch (err) {
+      alert(extractApiError(err));
+    }
+  };
+
+  const handleDelete = async (id) => {
+    setDeleting(id);
+    try {
+      await deleteAdminCoupon(id);
+      setCoupons((prev) => prev.filter((c) => c.id !== id));
+    } catch (err) {
+      alert(extractApiError(err));
+    } finally {
+      setDeleting(null);
+      setConfirmDelete(null);
+    }
+  };
 
   // ── Edit view ──
   if (view === "edit" && editing) return (
@@ -346,7 +390,13 @@ export default function AdminCoupons() {
         <button className="adm-btn adm-btn--ghost" onClick={() => { setView("list"); setEditing(null); }}>← Back</button>
       </div>
       <CouponForm initial={editing} isEdit={true}
-        onSave={(data) => { updateCoupon(editing.id, data); refresh(); setView("list"); setEditing(null); }}
+        onSave={async (data) => {
+          try {
+            const updated = await updateAdminCoupon(editing.id, data);
+            setCoupons((prev) => prev.map((c) => (c.id === editing.id ? { ...c, ...updated } : c)));
+            setView("list"); setEditing(null);
+          } catch (err) { alert(extractApiError(err)); }
+        }}
         onCancel={() => { setView("list"); setEditing(null); }} />
     </AdminLayout>
   );
@@ -359,7 +409,13 @@ export default function AdminCoupons() {
         <button className="adm-btn adm-btn--ghost" onClick={() => setView("list")}>← Back</button>
       </div>
       <CouponForm initial={EMPTY} isEdit={false}
-        onSave={(data) => { addCoupon(data); refresh(); setView("list"); }}
+        onSave={async (data) => {
+          try {
+            const created = await createAdminCoupon(data);
+            setCoupons((prev) => [created, ...prev]);
+            setView("list");
+          } catch (err) { alert(extractApiError(err)); }
+        }}
         onCancel={() => setView("list")} />
     </AdminLayout>
   );
@@ -529,7 +585,7 @@ export default function AdminCoupons() {
                         </button>
                         <button className="adm-btn adm-btn--ghost adm-btn--sm adm-btn--icon"
                           title={c.active ? "Deactivate" : "Activate"}
-                          onClick={(e) => { e.stopPropagation(); updateCoupon(c.id, { active: !c.active }); refresh(); }}>
+                          onClick={(e) => { e.stopPropagation(); handleToggleActive(c); }}>
                           {c.active
                             ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
                             : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
@@ -557,7 +613,9 @@ export default function AdminCoupons() {
             <p style={{ color: "#64748b", fontSize: ".875rem", marginBottom: 24 }}>This coupon will be permanently deleted and can no longer be used.</p>
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
               <button className="adm-btn adm-btn--ghost" onClick={() => setConfirmDelete(null)}>Cancel</button>
-              <button className="adm-btn adm-btn--danger" onClick={() => { deleteCoupon(confirmDelete); refresh(); setConfirmDelete(null); }}>Delete</button>
+              <button className="adm-btn adm-btn--danger" disabled={!!deleting} onClick={() => handleDelete(confirmDelete)}>
+                {deleting ? "Deleting…" : "Delete"}
+              </button>
             </div>
           </div>
         </div>
