@@ -268,3 +268,149 @@ function PurchasePanel({ project, onAddToCart }) {
     </div>
   );
 }
+
+// ─── Related Projects ─────────────────────────────────────────────────────────
+function RelatedProjects({ current, allProjects }) {
+  const related = allProjects
+    .filter((p) => p.id !== current.id && p.category === current.category && p.active !== false)
+    .slice(0, 3);
+  if (related.length === 0) return null;
+  return (
+    <section className="pdp-related">
+      <div className="pdp-container">
+        <h2 className="pdp-related__title">Related Projects</h2>
+        <div className="pdp-related__grid">
+          {related.map((p) => {
+            const disc = p.originalPrice > 0 ? Math.round(((p.originalPrice - p.price) / p.originalPrice) * 100) : 0;
+            return (
+              <Link to={`/projects/${p.slug}`} key={p.id} className="pdp-related-card">
+                {p.badge && <span className="pdp-related-card__badge">{p.badge}</span>}
+                <div className="pdp-related-card__header">
+                  <span className="pdp-related-card__level" style={{ color: LEVEL_COLORS[p.level] }}>
+                    <svg width="7" height="7" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="currentColor"/></svg>
+                    {p.level}
+                  </span>
+                  <span className="pdp-related-card__delivery">{p.delivery}</span>
+                </div>
+                <h3 className="pdp-related-card__title">{p.title}</h3>
+                <p className="pdp-related-card__desc">{p.description}</p>
+                <div className="pdp-related-card__tags">
+                  {(p.tags || []).map((t) => <span key={t} className="pdp-tag">{t}</span>)}
+                </div>
+                <div className="pdp-related-card__price">
+                  <span className="pdp-price-current">₹{(p.price || 0).toLocaleString("en-IN")}</span>
+                  {p.originalPrice > p.price && <span className="pdp-price-original">₹{p.originalPrice.toLocaleString("en-IN")}</span>}
+                  {disc > 0 && <span className="pdp-price-discount">{disc}% OFF</span>}
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ─── Main PDP ─────────────────────────────────────────────────────────────────
+export default function ProjectDetailPage() {
+  const { slug } = useParams();
+  const { addToCart } = useCart();
+  const [project, setProject] = useState(null);
+  const [allProjects, setAllProjects] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError("");
+
+    getProjectsApi()
+      .then((list) => {
+        if (cancelled) return;
+        setAllProjects(list);
+        const found = list.find(
+          (p) => p.slug === slug || String(p.id) === String(slug)
+        );
+        setProject(found || null);
+        if (!found) setError("Project not found.");
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setError("Could not load project. Please check your connection.");
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+
+    return () => { cancelled = true; };
+  }, [slug]);
+
+  if (loading) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
+        <div style={{ width: 40, height: 40, borderRadius: "50%", border: "3px solid #e2e8f0", borderTopColor: "#009fd4", animation: "pdp-spin .7s linear infinite" }} />
+        <style>{`@keyframes pdp-spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
+
+  if (error || !project) {
+    return (
+      <div style={{ textAlign: "center", padding: "80px 24px" }}>
+        <h1 style={{ fontSize: "2rem", marginBottom: 16 }}>{error || "Project not found"}</h1>
+        <Link to="/" className="pdp-btn pdp-btn--primary">← Back to Projects</Link>
+      </div>
+    );
+  }
+
+  const discount = project.originalPrice > project.price
+    ? Math.round(((project.originalPrice - project.price) / project.originalPrice) * 100)
+    : 0;
+
+  return (
+    <div className="pdp-page">
+      <div className="pdp-breadcrumb">
+        <div className="pdp-container">
+          <Link to="/">Projects</Link>
+          <span className="pdp-breadcrumb__sep">›</span>
+          <span>{project.title}</span>
+        </div>
+      </div>
+
+      <section className="pdp-hero">
+        <div className="pdp-container pdp-hero__inner">
+          <div className="pdp-hero__left">
+            <div className="pdp-hero__meta">
+              <span className="pdp-hero__category">{project.category}</span>
+              {project.badge && <span className="pdp-hero__badge">{project.badge}</span>}
+            </div>
+            <h1 className="pdp-hero__title">{project.title}</h1>
+            <p className="pdp-hero__desc">{project.longDesc || project.description}</p>
+            <div className="pdp-hero__tags">
+              {(project.tags || []).map((t) => <span key={t} className="pdp-tag pdp-tag--lg">{t}</span>)}
+            </div>
+            <MediaGallery project={project} />
+            <ProjectFiles files={project.projectFiles} />
+            {project.features?.length > 0 && (
+              <div className="pdp-features">
+                <h2 className="pdp-features__title">Key Features</h2>
+                <div className="pdp-features__grid">
+                  {project.features.map((f) => (
+                    <div key={f} className="pdp-feature-item">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="pdp-check-icon"><polyline points="20 6 9 17 4 12"/></svg>
+                      {f}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="pdp-hero__right">
+            <PurchasePanel project={project} onAddToCart={addToCart} />
+          </div>
+        </div>
+      </section>
+
+      <RelatedProjects current={project} allProjects={allProjects} />
+    </div>
+  );
+}

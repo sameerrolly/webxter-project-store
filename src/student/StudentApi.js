@@ -416,18 +416,39 @@ export async function getProjectsApi() {
   }
 }
 
+/** Resolve a relative backend URL to absolute */
+function resolveMediaUrl(url) {
+  const BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+  if (!url) return "";
+  if (url.startsWith("http") || url.startsWith("data:") || url.startsWith("blob:")) return url;
+  return `${BASE_URL}${url.startsWith("/") ? "" : "/"}${url}`;
+}
+
 /** Normalise a project object from the backend (snake_case) to camelCase */
 function normaliseProject(p) {
   const price         = parseFloat(p.sale_price      ?? p.price         ?? 0) || 0;
   const originalPrice = parseFloat(p.original_price  ?? p.originalPrice ?? 0) || 0;
 
+  // Normalise media items — backend returns { id, file_url, url, is_featured, order, media_type }
+  const rawMedia = Array.isArray(p.media) ? p.media : [];
+  const normMedia = rawMedia
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    .map((m) => ({
+      ...m,
+      type:     m.media_type === "video" ? "video" : "image",
+      url:      resolveMediaUrl(m.file_url || m.url || ""),
+      caption:  m.caption || "",
+      featured: m.is_featured ?? false,
+    }));
+
+  // Use featured image as thumbnail fallback
+  const featuredMedia = normMedia.find((m) => m.featured) || normMedia[0];
+  const thumbnail = resolveMediaUrl(p.thumbnail || p.thumbnail_url || featuredMedia?.url || "");
+
   return {
     ...p,
-    // IDs & routing
     id:            p.id,
     slug:          p.slug || String(p.id),
-
-    // Text
     title:         p.title         || "",
     description:   p.short_description || p.description || "",
     longDesc:      p.description   || p.long_desc      || "",
@@ -435,25 +456,20 @@ function normaliseProject(p) {
     level:         p.level_display    || p.level        || "",
     delivery:      p.delivery_time    || p.delivery     || "",
     badge:         p.badge_display !== "None" ? (p.badge_display || p.badge || "") : "",
-
-    // Pricing
     price,
     originalPrice,
-    sale_price:    price,
+    sale_price:     price,
     original_price: originalPrice,
-
-    // Status — backend uses status:"active", frontend uses active:true
-    active:        p.status === "active" || p.active === true,
-    soldOut:       p.is_sold_out ?? p.soldOut ?? false,
-
-    // Arrays — backend uses different names
-    tags:          Array.isArray(p.technologies)   ? p.technologies   : (Array.isArray(p.tags)     ? p.tags     : []),
-    features:      Array.isArray(p.key_features)   ? p.key_features   : (Array.isArray(p.features) ? p.features : []),
-    includes:      Array.isArray(p.whats_included) ? p.whats_included : (Array.isArray(p.includes) ? p.includes : []),
-    screenshots:   Array.isArray(p.screenshots)    ? p.screenshots    : [],
-    media:         Array.isArray(p.media)          ? p.media          : [],
-    projectFiles:  Array.isArray(p.project_links)  ? p.project_links  : (Array.isArray(p.projectFiles) ? p.projectFiles : []),
-    demoVideo:     p.demo_video_url || p.demoVideo || "",
+    active:         p.status === "active" || p.active === true,
+    soldOut:        p.is_sold_out ?? p.soldOut ?? false,
+    tags:           Array.isArray(p.technologies)   ? p.technologies   : (Array.isArray(p.tags)     ? p.tags     : []),
+    features:       Array.isArray(p.key_features)   ? p.key_features   : (Array.isArray(p.features) ? p.features : []),
+    includes:       Array.isArray(p.whats_included) ? p.whats_included : (Array.isArray(p.includes) ? p.includes : []),
+    screenshots:    normMedia.filter((m) => m.type === "image").map((m) => m.url),
+    media:          normMedia,
+    projectFiles:   Array.isArray(p.project_links)  ? p.project_links  : (Array.isArray(p.projectFiles) ? p.projectFiles : []),
+    demoVideo:      p.demo_video_url || p.demoVideo || "",
+    thumbnail,
   };
 }
 

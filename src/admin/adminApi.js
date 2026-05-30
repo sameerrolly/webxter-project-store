@@ -207,52 +207,88 @@ export async function deleteAdminOrder(id) {
   await api.delete(`/admin/orders/${id}/`);
 }
 
+// ─── Backend choice maps ──────────────────────────────────────────────────────
+// Maps display names (used in the form) → backend codes
+const CATEGORY_MAP = {
+  "Web Development": "web",
+  "Mobile":          "mobile",
+  "Data Science":    "data_science",
+  "AI/ML":           "ai_ml",
+  "Desktop":         "desktop",
+  "IoT":             "iot",
+  "Other":           "other",
+  // pass-through if already a code
+  "web": "web", "mobile": "mobile", "data_science": "data_science",
+  "ai_ml": "ai_ml", "desktop": "desktop", "iot": "iot", "other": "other",
+};
+
+const LEVEL_MAP = {
+  "Beginner":     "beginner",
+  "Intermediate": "intermediate",
+  "Advanced":     "advanced",
+  "Expert":       "expert",
+  "beginner": "beginner", "intermediate": "intermediate",
+  "advanced": "advanced", "expert": "expert",
+};
+
+const BADGE_MAP = {
+  "":        "",
+  "None":    "",
+  "Popular": "popular",
+  "Hot":     "hot",
+  "New":     "new",
+  "popular": "popular", "hot": "hot", "new": "new",
+};
+
 // ─── Projects ─────────────────────────────────────────────────────────────────
 
 /**
  * Maps the camelCase form object to the exact snake_case field names
- * the Django backend serializer expects.
+ * the Django backend serializer expects, including choice code mapping.
  */
 function toSnakeCase(p) {
   const payload = {};
 
-  if (p.title         != null) payload.title           = p.title;
-  if (p.description   != null) payload.short_description = p.description;   // card description
-  if (p.longDesc      != null) payload.description     = p.longDesc;        // full description
-  if (p.long_desc     != null) payload.description     = p.long_desc;
-  if (p.category      != null) payload.category        = p.category;
-  if (p.level         != null) payload.level           = p.level;
-  if (p.delivery      != null) payload.delivery_time   = p.delivery;
-  if (p.delivery_time != null) payload.delivery_time   = p.delivery_time;
-  if (p.badge         != null) payload.badge           = p.badge;
+  if (p.title         != null) payload.title             = p.title;
+  if (p.description   != null) payload.short_description = p.description;
+  if (p.longDesc      != null) payload.description       = p.longDesc;
+  if (p.long_desc     != null) payload.description       = p.long_desc;
+
+  // Map display names → backend codes
+  if (p.category      != null) payload.category          = CATEGORY_MAP[p.category]      ?? p.category;
+  if (p.level         != null) payload.level             = LEVEL_MAP[p.level]            ?? p.level;
+  if (p.badge         != null) payload.badge             = BADGE_MAP[p.badge]            ?? p.badge ?? "";
+
+  if (p.delivery      != null) payload.delivery_time     = p.delivery;
+  if (p.delivery_time != null) payload.delivery_time     = p.delivery_time;
 
   // Price fields
-  if (p.price         != null) payload.sale_price      = Number(p.price);
-  if (p.sale_price    != null) payload.sale_price      = Number(p.sale_price);
-  if (p.originalPrice != null) payload.original_price  = Number(p.originalPrice);
-  if (p.original_price!= null) payload.original_price  = Number(p.original_price);
+  if (p.price         != null) payload.sale_price        = Number(p.price)         || null;
+  if (p.sale_price    != null) payload.sale_price        = Number(p.sale_price)    || null;
+  if (p.originalPrice != null) payload.original_price    = Number(p.originalPrice) || null;
+  if (p.original_price!= null) payload.original_price    = Number(p.original_price)|| null;
 
   // Active → status
   if (p.active != null) payload.status = p.active ? "active" : "draft";
   if (p.status != null) payload.status = p.status;
 
-  if (p.soldOut       != null) payload.is_sold_out     = p.soldOut;
-  if (p.sold_out      != null) payload.is_sold_out     = p.sold_out;
+  if (p.soldOut       != null) payload.is_sold_out       = p.soldOut;
+  if (p.sold_out      != null) payload.is_sold_out       = p.sold_out;
 
   // Array fields
-  if (p.tags          != null) payload.technologies    = p.tags;
-  if (p.technologies  != null) payload.technologies    = p.technologies;
-  if (p.features      != null) payload.key_features    = p.features;
-  if (p.key_features  != null) payload.key_features    = p.key_features;
-  if (p.includes      != null) payload.whats_included  = p.includes;
-  if (p.whats_included!= null) payload.whats_included  = p.whats_included;
-  if (p.screenshots   != null) payload.screenshots     = p.screenshots;
-  if (p.media         != null) payload.media           = p.media;
-  if (p.projectFiles  != null) payload.project_links   = p.projectFiles;
-  if (p.project_files != null) payload.project_links   = p.project_files;
-  if (p.project_links != null) payload.project_links   = p.project_links;
-  if (p.demoVideo     != null) payload.demo_video_url  = p.demoVideo;
-  if (p.demo_video    != null) payload.demo_video_url  = p.demo_video;
+  if (p.tags          != null) payload.technologies      = p.tags;
+  if (p.technologies  != null) payload.technologies      = p.technologies;
+  if (p.features      != null) payload.key_features      = p.features;
+  if (p.key_features  != null) payload.key_features      = p.key_features;
+  if (p.includes      != null) payload.whats_included    = p.includes;
+  if (p.whats_included!= null) payload.whats_included    = p.whats_included;
+  if (p.screenshots   != null) payload.screenshots       = p.screenshots;
+  if (p.media         != null) payload.media             = p.media;
+  if (p.projectFiles  != null) payload.project_links     = p.projectFiles;
+  if (p.project_files != null) payload.project_links     = p.project_files;
+  if (p.project_links != null) payload.project_links     = p.project_links;
+  if (p.demoVideo     != null) payload.demo_video_url    = p.demoVideo;
+  if (p.demo_video    != null) payload.demo_video_url    = p.demo_video;
 
   return payload;
 }
@@ -283,6 +319,108 @@ export async function updateAdminProject(id, data) {
   const payload = toSnakeCase(data);
   const res = await api.patch(`/admin/projects/${id}/`, payload);
   return res.data;
+}
+
+/**
+ * Upload a thumbnail image for a project.
+ * PATCH /api/v1/admin/projects/:id/  with multipart/form-data
+ * field name: "thumbnail"
+ */
+export async function uploadProjectThumbnail(id, file) {
+  const token = getAdminToken();
+  const formData = new FormData();
+  formData.append("thumbnail", file);
+
+  let res = await fetch(`${BASE}/api/v1/admin/projects/${id}/`, {
+    method: "PATCH",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+
+  if (res.status === 401) {
+    const newToken = await (async () => {
+      const r = await axios.post(`${BASE}/api/v1/auth/token/refresh/`, { refresh: getAdminRefresh() });
+      localStorage.setItem(KEYS.ACCESS, r.data.access);
+      return r.data.access;
+    })();
+    res = await fetch(`${BASE}/api/v1/admin/projects/${id}/`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${newToken}` },
+      body: formData,
+    });
+  }
+
+  const contentType = res.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    throw new Error(`Server error (${res.status}) uploading image.`);
+  }
+  const data = await res.json();
+  if (!res.ok) throw new Error(extractApiError({ response: { data } }));
+  return data;
+}
+
+/**
+ * Upload a media item (image/video file) to a project's media gallery.
+ * POST /api/v1/admin/projects/:id/media/  (multipart/form-data)
+ * Fields: file, media_type, is_featured, order
+ */
+export async function uploadProjectMedia(projectId, file, { isFeatured = false, order = 0 } = {}) {
+  const token = getAdminToken();
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("media_type", file.type.startsWith("video/") ? "video" : "image");
+  formData.append("is_featured", isFeatured ? "true" : "false");
+  formData.append("order", String(order));
+
+  let res = await fetch(`${BASE}/api/v1/admin/projects/${projectId}/media/`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+
+  if (res.status === 401) {
+    const newToken = await (async () => {
+      const r = await axios.post(`${BASE}/api/v1/auth/token/refresh/`, { refresh: getAdminRefresh() });
+      localStorage.setItem(KEYS.ACCESS, r.data.access);
+      return r.data.access;
+    })();
+    res = await fetch(`${BASE}/api/v1/admin/projects/${projectId}/media/`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${newToken}` },
+      body: formData,
+    });
+  }
+
+  const contentType = res.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    throw new Error(`Server error (${res.status}) uploading media.`);
+  }
+  const data = await res.json();
+  if (!res.ok) throw new Error(extractApiError({ response: { data } }));
+  return data;
+}
+
+/**
+ * Add a URL-based media item to a project's media gallery.
+ * POST /api/v1/admin/projects/:id/media/  (JSON)
+ * Fields: url, media_type, is_featured, order
+ */
+export async function addProjectMediaUrl(projectId, { url, mediaType = "url", isFeatured = false, order = 0 }) {
+  const res = await api.post(`/admin/projects/${projectId}/media/`, {
+    url,
+    media_type: mediaType,
+    is_featured: isFeatured,
+    order,
+  });
+  return res.data;
+}
+
+/**
+ * Delete a media item from a project's gallery.
+ * DELETE /api/v1/admin/projects/:projectId/media/:mediaId/
+ */
+export async function deleteProjectMedia(projectId, mediaId) {
+  await api.delete(`/admin/projects/${projectId}/media/${mediaId}/`);
 }
 
 /**

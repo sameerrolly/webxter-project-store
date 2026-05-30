@@ -6,14 +6,36 @@ import {
   createAdminProject,
   updateAdminProject,
   deleteAdminProject,
+  uploadProjectThumbnail,
+  uploadProjectMedia,
+  addProjectMediaUrl,
+  deleteProjectMedia,
   extractApiError,
 } from "./adminApi";
 // Local store kept as fallback for the form helpers only
 import { getProjects } from "./adminStore";
 
-const CATEGORIES = ["Web Development", "Mobile", "Data Science", "AI/ML", "Desktop", "IoT"];
-const LEVELS = ["Beginner", "Intermediate", "Advanced", "Expert"];
-const BADGES = ["", "Popular", "Hot", "New"];
+const CATEGORIES = [
+  { label: "Web Development", value: "web" },
+  { label: "Mobile",          value: "mobile" },
+  { label: "Data Science",    value: "data_science" },
+  { label: "AI/ML",           value: "ai_ml" },
+  { label: "Desktop",         value: "desktop" },
+  { label: "IoT",             value: "iot" },
+  { label: "Other",           value: "other" },
+];
+const LEVELS = [
+  { label: "Beginner",     value: "beginner" },
+  { label: "Intermediate", value: "intermediate" },
+  { label: "Advanced",     value: "advanced" },
+  { label: "Expert",       value: "expert" },
+];
+const BADGES = [
+  { label: "None",    value: "" },
+  { label: "Popular", value: "popular" },
+  { label: "Hot",     value: "hot" },
+  { label: "New",     value: "new" },
+];
 
 const LEVEL_COLORS = { Beginner: "#22c55e", Intermediate: "#f59e0b", Advanced: "#ef4444", Expert: "#8b5cf6" };
 
@@ -76,32 +98,19 @@ function MediaManager({ media, demoVideo, onMediaChange, onVideoChange }) {
     setUrlInput(""); setCaptionInput("");
   };
 
-  // ── Direct file upload → base64 ──
+  // ── Direct file upload → store File object + object URL preview ──
   const handleFileUpload = (e) => {
     const files = Array.from(e.target.files);
     if (!files.length) return;
-    setUploading(true);
-    let loaded = 0;
-    const newItems = [];
-    files.forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const isVideo = file.type.startsWith("video/");
-        newItems.push({
-          type: isVideo ? "video" : "image",
-          url: ev.target.result,
-          caption: file.name.replace(/\.[^.]+$/, ""),
-          featured: media.length === 0 && newItems.length === 0,
-        });
-        loaded++;
-        if (loaded === files.length) {
-          onMediaChange([...media, ...newItems]);
-          setUploading(false);
-          if (fileInputRef.current) fileInputRef.current.value = "";
-        }
-      };
-      reader.readAsDataURL(file);
-    });
+    const newItems = files.map((file, idx) => ({
+      type: file.type.startsWith("video/") ? "video" : "image",
+      url: URL.createObjectURL(file),   // local preview only
+      _file: file,                       // actual File for backend upload
+      caption: file.name.replace(/\.[^.]+$/, ""),
+      featured: media.length === 0 && idx === 0,
+    }));
+    onMediaChange([...media, ...newItems]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   // ── Set featured ──
@@ -184,20 +193,14 @@ function MediaManager({ media, demoVideo, onMediaChange, onVideoChange }) {
           e.currentTarget.classList.remove("adm-upload-zone--over");
           const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith("image/") || f.type.startsWith("video/"));
           if (files.length) {
-            const fakeEvent = { target: { files, result: null } };
-            // reuse handler via synthetic approach
-            setUploading(true);
-            let loaded = 0;
-            const newItems = [];
-            files.forEach((file) => {
-              const reader = new FileReader();
-              reader.onload = (ev) => {
-                newItems.push({ type: file.type.startsWith("video/") ? "video" : "image", url: ev.target.result, caption: file.name.replace(/\.[^.]+$/, ""), featured: media.length === 0 && newItems.length === 0 });
-                loaded++;
-                if (loaded === files.length) { onMediaChange([...media, ...newItems]); setUploading(false); }
-              };
-              reader.readAsDataURL(file);
-            });
+            const newItems = files.map((file, idx) => ({
+              type: file.type.startsWith("video/") ? "video" : "image",
+              url: URL.createObjectURL(file),
+              _file: file,
+              caption: file.name.replace(/\.[^.]+$/, ""),
+              featured: media.length === 0 && idx === 0,
+            }));
+            onMediaChange([...media, ...newItems]);
           }
         }}
       >
@@ -242,7 +245,7 @@ function MediaManager({ media, demoVideo, onMediaChange, onVideoChange }) {
           {media.map((item, i) => (
             <div
               key={i}
-              className={`adm-media-item${item.featured ? " adm-media-item--featured" : ""}${dragOverIdx === i ? " adm-media-item--dragover" : ""}${dragIdx === i ? " adm-media-item--dragging" : ""}`}
+              className={`adm-media-item${(item.featured || item.is_featured) ? " adm-media-item--featured" : ""}${dragOverIdx === i ? " adm-media-item--dragover" : ""}${dragIdx === i ? " adm-media-item--dragging" : ""}`}
               draggable
               onDragStart={(e) => handleDragStart(e, i)}
               onDragOver={(e) => handleDragOver(e, i)}
@@ -259,7 +262,7 @@ function MediaManager({ media, demoVideo, onMediaChange, onVideoChange }) {
                   : <img src={item.url} alt={item.caption || `Media ${i + 1}`}
                       onError={(e) => { e.target.src = `https://picsum.photos/seed/${i}/220/140`; }} />
                 }
-                {item.featured && <div className="adm-media-item__badge">★ Featured</div>}
+                {(item.featured || item.is_featured) && <div className="adm-media-item__badge">★ Featured</div>}
                 <div className="adm-media-item__drag-hint">⠿ drag</div>
               </div>
 
@@ -277,7 +280,7 @@ function MediaManager({ media, demoVideo, onMediaChange, onVideoChange }) {
                 </button>
                 <button type="button" title="Set as featured"
                   onClick={() => setFeatured(i)}
-                  className={`adm-media-item__ctrl${item.featured ? " adm-media-item__ctrl--active" : ""}`}>
+                  className={`adm-media-item__ctrl${(item.featured || item.is_featured) ? " adm-media-item__ctrl--active" : ""}`}>
                   ★
                 </button>
                 <button type="button" title="Remove"
@@ -469,14 +472,14 @@ function ProjectForm({ initial, onSave, onCancel, isEdit, saving }) {
           </div>
           <div className="adm-field">
             <label className="adm-field__label">Category</label>
-            <select className="adm-field__input" value={form.category || "Web Development"} onChange={set("category")}>
-              {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+            <select className="adm-field__input" value={form.category || "web"} onChange={set("category")}>
+              {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
           </div>
           <div className="adm-field">
             <label className="adm-field__label">Level</label>
-            <select className="adm-field__input" value={form.level || "Intermediate"} onChange={set("level")}>
-              {LEVELS.map((l) => <option key={l}>{l}</option>)}
+            <select className="adm-field__input" value={form.level || "intermediate"} onChange={set("level")}>
+              {LEVELS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
             </select>
           </div>
           <div className="adm-field">
@@ -486,7 +489,7 @@ function ProjectForm({ initial, onSave, onCancel, isEdit, saving }) {
           <div className="adm-field">
             <label className="adm-field__label">Badge</label>
             <select className="adm-field__input" value={form.badge || ""} onChange={set("badge")}>
-              {BADGES.map((b) => <option key={b} value={b}>{b || "None"}</option>)}
+              {BADGES.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
             </select>
           </div>
           <div className="adm-field adm-form__full">
@@ -577,6 +580,42 @@ function ProjectForm({ initial, onSave, onCancel, isEdit, saving }) {
         />
       </div>
 
+      {/* Thumbnail image upload */}
+      <div className="adm-card">
+        <div style={{ fontWeight: 700, fontSize: ".95rem", marginBottom: 18, color: "#0f172a" }}>Thumbnail Image</div>
+        <div className="adm-field">
+          <label className="adm-field__label">Upload Thumbnail (JPG, PNG, WebP · max 2MB)</label>
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="adm-field__input"
+            style={{ padding: "6px 10px", cursor: "pointer" }}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) setVal("_thumbnailFile", file);
+            }}
+          />
+          {form._thumbnailFile && (
+            <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 10 }}>
+              <img
+                src={URL.createObjectURL(form._thumbnailFile)}
+                alt="Preview"
+                style={{ width: 120, height: 80, objectFit: "cover", borderRadius: 8, border: "1px solid #e2e8f0" }}
+              />
+              <span style={{ fontSize: ".78rem", color: "#64748b" }}>{form._thumbnailFile.name}</span>
+            </div>
+          )}
+          {form.thumbnail && !form._thumbnailFile && (
+            <div style={{ marginTop: 8 }}>
+              <img src={form.thumbnail} alt="Current thumbnail"
+                style={{ width: 120, height: 80, objectFit: "cover", borderRadius: 8, border: "1px solid #e2e8f0" }} />
+              <p style={{ fontSize: ".72rem", color: "#94a3b8", marginTop: 4 }}>Current thumbnail</p>
+            </div>
+          )}
+          <p className="adm-field__hint">This image appears on the project card and detail page</p>
+        </div>
+      </div>
+
       {/* Status */}
       <div className="adm-card">
         <div style={{ fontWeight: 700, fontSize: ".95rem", marginBottom: 18, color: "#0f172a" }}>Visibility</div>
@@ -627,21 +666,36 @@ export function AdminProjectsList() {
     try {
       const data = await fetchAdminProjects();
       // Normalise backend field names → what the table/toggle expects
-      const normalised = data.map((p) => ({
-        ...p,
-        active:        p.status === "active" || p.active === true,
-        soldOut:       p.is_sold_out ?? p.soldOut ?? false,
-        price:         parseFloat(p.sale_price      ?? p.price         ?? 0) || 0,
-        originalPrice: parseFloat(p.original_price  ?? p.originalPrice ?? 0) || 0,
-        category:      p.category_display || p.category || "",
-        level:         p.level_display    || p.level    || "",
-        delivery:      p.delivery_time    || p.delivery || "",
-        tags:          Array.isArray(p.technologies)   ? p.technologies   : (p.tags     || []),
-        features:      Array.isArray(p.key_features)   ? p.key_features   : (p.features || []),
-        includes:      Array.isArray(p.whats_included) ? p.whats_included : (p.includes || []),
-        screenshots:   Array.isArray(p.screenshots)    ? p.screenshots    : [],
-        slug:          p.slug || String(p.id),
-      }));
+      const normalised = data.map((p) => {
+        const BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+        const resolveUrl = (url) => {
+          if (!url) return "";
+          if (url.startsWith("http") || url.startsWith("data:")) return url;
+          return `${BASE_URL}${url.startsWith("/") ? "" : "/"}${url}`;
+        };
+        const rawMedia = Array.isArray(p.media) ? p.media : [];
+        const normMedia = rawMedia
+          .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+          .map((m) => ({ ...m, url: resolveUrl(m.file_url || m.url || "") }));
+        const featuredMedia = normMedia.find((m) => m.is_featured) || normMedia[0];
+        return {
+          ...p,
+          active:        p.status === "active" || p.active === true,
+          soldOut:       p.is_sold_out ?? p.soldOut ?? false,
+          price:         parseFloat(p.sale_price      ?? p.price         ?? 0) || 0,
+          originalPrice: parseFloat(p.original_price  ?? p.originalPrice ?? 0) || 0,
+          category:      p.category_display || p.category || "",
+          level:         p.level_display    || p.level    || "",
+          delivery:      p.delivery_time    || p.delivery || "",
+          tags:          Array.isArray(p.technologies)   ? p.technologies   : (p.tags     || []),
+          features:      Array.isArray(p.key_features)   ? p.key_features   : (p.features || []),
+          includes:      Array.isArray(p.whats_included) ? p.whats_included : (p.includes || []),
+          screenshots:   normMedia.filter((m) => m.media_type !== "video").map((m) => m.url),
+          media:         normMedia,
+          thumbnail:     resolveUrl(p.thumbnail || p.thumbnail_url || featuredMedia?.url || ""),
+          slug:          p.slug || String(p.id),
+        };
+      });
       setProjects(normalised);
     } catch (err) {
       setProjects([]);
@@ -740,8 +794,13 @@ export function AdminProjectsList() {
                     <td>
                       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                         <div style={{ width: 48, height: 36, borderRadius: 6, overflow: "hidden", border: "1px solid #e2e8f0", flexShrink: 0 }}>
-                          {(p.screenshots?.[0] || p.media?.[0]?.url)
-                            ? <img src={p.screenshots?.[0] || p.media?.[0]?.url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          {(p.thumbnail || p.screenshots?.[0] || p.media?.find(m => m.is_featured)?.file_url || p.media?.find(m => m.is_featured)?.url || p.media?.[0]?.file_url || p.media?.[0]?.url)
+                            ? <img
+                                src={p.thumbnail || p.screenshots?.[0] || p.media?.find(m => m.is_featured)?.file_url || p.media?.find(m => m.is_featured)?.url || p.media?.[0]?.file_url || p.media?.[0]?.url}
+                                alt=""
+                                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                                onError={(e) => { e.currentTarget.style.display = "none"; }}
+                              />
                             : <div style={{ width: "100%", height: "100%", background: "linear-gradient(135deg,#f0faff,#fdf0ff)", display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8" }}>
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/></svg>
                               </div>
@@ -828,7 +887,32 @@ export function AdminAddProject() {
     setSaving(true);
     setApiError("");
     try {
-      await createAdminProject(data);
+      const created = await createAdminProject(data);
+      const pid = created.id;
+
+      // Upload thumbnail if selected
+      if (data._thumbnailFile && pid) {
+        try { await uploadProjectThumbnail(pid, data._thumbnailFile); } catch (e) {
+          setApiError("Project created but thumbnail upload failed: " + extractApiError(e));
+        }
+      }
+
+      // Upload any media items that are File objects (not yet URLs)
+      if (pid && Array.isArray(data.media)) {
+        for (let i = 0; i < data.media.length; i++) {
+          const item = data.media[i];
+          if (item._file instanceof File) {
+            try {
+              await uploadProjectMedia(pid, item._file, { isFeatured: item.featured || i === 0, order: i });
+            } catch (e) { /* non-critical */ }
+          } else if (item.url && !item.url.startsWith("data:")) {
+            try {
+              await addProjectMediaUrl(pid, { url: item.url, mediaType: item.type === "video" ? "video" : "url", isFeatured: item.featured || i === 0, order: i });
+            } catch (e) { /* non-critical */ }
+          }
+        }
+      }
+
       navigate("/admin/projects");
     } catch (err) {
       setApiError(extractApiError(err));
@@ -888,7 +972,13 @@ export function AdminEditProject() {
           features:      Array.isArray(raw.key_features)   ? raw.key_features   : (raw.features || []),
           includes:      Array.isArray(raw.whats_included) ? raw.whats_included : (raw.includes || []),
           screenshots:   Array.isArray(raw.screenshots)    ? raw.screenshots    : [],
-          media:         Array.isArray(raw.media)          ? raw.media          : [],
+          media:         Array.isArray(raw.media)          ? raw.media.map((m, i) => ({
+          ...m,
+          type:     m.media_type === "video" ? "video" : "image",
+          url:      (() => { const u = m.file_url || m.url || ""; if (!u) return ""; if (u.startsWith("http")) return u; const B = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000"; return `${B}${u.startsWith("/") ? "" : "/"}${u}`; })(),
+          featured: m.is_featured ?? (i === 0),
+          caption:  m.caption || "",
+        })) : [],
           projectFiles:  Array.isArray(raw.project_links)  ? raw.project_links  : [],
           demoVideo:     raw.demo_video_url || raw.demoVideo || "",
           slug:          raw.slug || String(raw.id),
@@ -905,6 +995,32 @@ export function AdminEditProject() {
     setApiError("");
     try {
       await updateAdminProject(id, data);
+
+      // Upload new thumbnail if selected
+      if (data._thumbnailFile) {
+        try { await uploadProjectThumbnail(id, data._thumbnailFile); } catch (e) {
+          setApiError("Project saved but thumbnail upload failed: " + extractApiError(e));
+          setSaving(false); return;
+        }
+      }
+
+      // Upload any new media File objects
+      if (Array.isArray(data.media)) {
+        for (let i = 0; i < data.media.length; i++) {
+          const item = data.media[i];
+          if (item._file instanceof File) {
+            try {
+              await uploadProjectMedia(id, item._file, { isFeatured: item.featured || i === 0, order: i });
+            } catch (e) { /* non-critical */ }
+          } else if (item.url && !item.url.startsWith("data:") && !item.id) {
+            // New URL-based item (no id means not yet saved)
+            try {
+              await addProjectMediaUrl(id, { url: item.url, mediaType: item.type === "video" ? "video" : "url", isFeatured: item.featured || i === 0, order: i });
+            } catch (e) { /* non-critical */ }
+          }
+        }
+      }
+
       navigate("/admin/projects");
     } catch (err) {
       setApiError(extractApiError(err));
