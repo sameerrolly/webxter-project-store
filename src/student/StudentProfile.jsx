@@ -110,6 +110,7 @@ export default function StudentProfile() {
 
   const removeAvatar = async () => {
     setUploading(true);
+    setImgError("");
     try {
       await removeAvatarApi();
       setProfile((p) => ({ ...p, avatar: "" }));
@@ -118,7 +119,6 @@ export default function StudentProfile() {
       setImgError(err.message || "Could not remove photo. Please try again.");
     } finally {
       setUploading(false);
-      setImgError("");
     }
   };
 

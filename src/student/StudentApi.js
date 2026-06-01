@@ -319,23 +319,73 @@ export async function uploadAvatarApi(file) {
 
 /**
  * Remove the profile avatar.
- * Sends PATCH /api/v1/auth/avatar/ with avatar=null
- * (uses the same endpoint as upload — no separate DELETE needed)
+ * Tries DELETE /api/v1/auth/avatar/ first (cleanest).
+ * Falls back to PATCH /api/v1/auth/profile/ with avatar=null via JSON.
+ * Falls back to PATCH /api/v1/auth/avatar/ with empty multipart field.
  */
 export async function removeAvatarApi() {
   const token = getAccessToken();
+  const authHeader = token ? { Authorization: `Bearer ${token}` } : {};
 
-  // Send a multipart form with an empty avatar field to clear it
+  // ── Attempt 1: DELETE /api/v1/auth/avatar/ ────────────────────────────────
+  try {
+    let res = await fetch(`${BASE}/api/v1/auth/avatar/`, {
+      method: "DELETE",
+      headers: authHeader,
+    });
+    if (res.status === 401) {
+      const newToken = await refreshAccessToken();
+      res = await fetch(`${BASE}/api/v1/auth/avatar/`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${newToken}` },
+      });
+    }
+    if (res.status === 204 || res.status === 200 || res.status === 202) {
+      updateStoredUser({ avatar: null });
+      return;
+    }
+    // 405 Method Not Allowed → try next approach
+    if (res.status !== 405 && res.status !== 404) {
+      const ct = res.headers.get("content-type") || "";
+      const data = ct.includes("application/json") ? await res.json().catch(() => ({})) : {};
+      throw new Error(extractError(data) || `Server error (${res.status})`);
+    }
+  } catch (err) {
+    // Only re-throw real errors, not 404/405 fallthrough
+    if (err.message && !err.message.includes("Server error (40")) throw err;
+  }
+
+  // ── Attempt 2: PATCH /api/v1/auth/profile/ with { avatar: null } ─────────
+  try {
+    let res = await fetch(`${BASE}/api/v1/auth/profile/`, {
+      method: "PATCH",
+      headers: { ...authHeader, "Content-Type": "application/json" },
+      body: JSON.stringify({ avatar: null }),
+    });
+    if (res.status === 401) {
+      const newToken = await refreshAccessToken();
+      res = await fetch(`${BASE}/api/v1/auth/profile/`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${newToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ avatar: null }),
+      });
+    }
+    if (res.status === 200 || res.status === 204) {
+      updateStoredUser({ avatar: null });
+      return;
+    }
+  } catch { /* fall through to multipart */ }
+
+  // ── Attempt 3: PATCH /api/v1/auth/avatar/ with empty multipart ───────────
   const formData = new FormData();
-  formData.append("avatar", "");          // empty string signals "remove"
+  formData.append("avatar", new Blob([]), "remove");   // empty Blob, not empty string
 
   let res = await fetch(`${BASE}/api/v1/auth/avatar/`, {
     method: "PATCH",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    headers: authHeader,
     body: formData,
   });
 
-  // Retry once on 401
   if (res.status === 401) {
     try {
       const newToken = await refreshAccessToken();
@@ -351,7 +401,6 @@ export async function removeAvatarApi() {
     }
   }
 
-  // 204 No Content or 200 — both are success
   if (res.status === 204 || res.status === 200) {
     updateStoredUser({ avatar: null });
     return;
@@ -359,7 +408,7 @@ export async function removeAvatarApi() {
 
   const contentType = res.headers.get("content-type") || "";
   if (!contentType.includes("application/json")) {
-    throw new Error(`Server error (${res.status}) while removing avatar.`);
+    throw new Error(`Could not remove photo (${res.status}). Please try again.`);
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(extractError(data));
