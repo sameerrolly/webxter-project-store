@@ -192,11 +192,12 @@ export async function fetchAdminOrders(params = {}) {
 }
 
 /**
- * PATCH /api/v1/admin/orders/:id/
+ * Update order status.
+ * PATCH /api/v1/admin/orders/:id/status/   ← dedicated status endpoint
  * Body: { status }
  */
 export async function updateAdminOrderStatus(id, status) {
-  const res = await api.patch(`/admin/orders/${id}/`, { status });
+  const res = await api.patch(`/admin/orders/${id}/status/`, { status });
   return res.data;
 }
 
@@ -452,10 +453,14 @@ export async function saveAdminSettings(data) {
 
 /**
  * GET /api/v1/admin/coupons/
+ * Also caches the list in localStorage so students can validate coupons at checkout.
  */
 export async function fetchAdminCoupons() {
   const res = await api.get("/admin/coupons/");
-  return Array.isArray(res.data) ? res.data : (res.data.results || []);
+  const list = Array.isArray(res.data) ? res.data : (res.data.results || []);
+  // Cache for student checkout coupon validation
+  try { localStorage.setItem("wx_cached_coupons", JSON.stringify(list)); } catch {}
+  return list;
 }
 
 /**

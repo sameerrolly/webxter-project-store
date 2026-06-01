@@ -490,20 +490,159 @@ export function Footer() {
   );
 }
 
+// ─── Cart Sidebar ─────────────────────────────────────────────────────────────
+function CartSidebar({ open, onClose }) {
+  const { cart, removeFromCart, total } = useCart();
+  const navigate = useNavigate();
+
+  // Lock body scroll when open
+  React.useEffect(() => {
+    document.body.style.overflow = open ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [open]);
+
+  // Close on Escape
+  React.useEffect(() => {
+    const h = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [onClose]);
+
+  const savings = cart.reduce((s, i) => s + ((i.originalPrice || i.price) - i.price), 0);
+
+  return (
+    <>
+      {open && <div className="layout-backdrop" onClick={onClose} aria-hidden="true" />}
+      <div
+        role="dialog"
+        aria-label="Shopping cart"
+        className={`layout-cart-sidebar ${open ? "layout-cart-sidebar--open" : ""}`}
+      >
+        {/* Header */}
+        <div className="layout-cart-sidebar__header">
+          <div className="layout-cart-sidebar__title">
+            <CartIcon />
+            <span>My Cart</span>
+            {cart.length > 0 && (
+              <span className="layout-cart-sidebar__badge">{cart.length}</span>
+            )}
+          </div>
+          <button className="layout-cart-sidebar__close" onClick={onClose} aria-label="Close cart">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        {/* Items */}
+        <div className="layout-cart-sidebar__body">
+          {cart.length === 0 ? (
+            <div className="layout-cart-sidebar__empty">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+                <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+              </svg>
+              <p>Your cart is empty</p>
+              <Link to="/" className="layout-cart-sidebar__browse" onClick={onClose}>
+                Browse Projects
+              </Link>
+            </div>
+          ) : (
+            <div className="layout-cart-sidebar__items">
+              {cart.map((item) => (
+                <div key={item.id} className="layout-cart-sidebar__item">
+                  <div className="layout-cart-sidebar__item-thumb">
+                    {item.screenshots?.[0]
+                      ? <img src={item.screenshots[0]} alt={item.title} />
+                      : <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+                    }
+                  </div>
+                  <div className="layout-cart-sidebar__item-info">
+                    <Link
+                      to={`/projects/${item.slug}`}
+                      className="layout-cart-sidebar__item-title"
+                      onClick={onClose}
+                    >{item.title}</Link>
+                    <div className="layout-cart-sidebar__item-price">
+                      <span className="layout-cart-sidebar__item-price--current">₹{item.price.toLocaleString("en-IN")}</span>
+                      {item.originalPrice && item.originalPrice > item.price && (
+                        <span className="layout-cart-sidebar__item-price--original">₹{item.originalPrice.toLocaleString("en-IN")}</span>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    className="layout-cart-sidebar__item-remove"
+                    onClick={() => removeFromCart(item.id)}
+                    aria-label={`Remove ${item.title}`}
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="3 6 5 6 21 6"/>
+                      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                      <path d="M10 11v6M14 11v6"/>
+                      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer — only when cart has items */}
+        {cart.length > 0 && (
+          <div className="layout-cart-sidebar__footer">
+            {savings > 0 && (
+              <div className="layout-cart-sidebar__savings">
+                You save ₹{savings.toLocaleString("en-IN")}
+              </div>
+            )}
+            <div className="layout-cart-sidebar__total">
+              <span>Total</span>
+              <span>₹{total.toLocaleString("en-IN")}</span>
+            </div>
+            <button
+              className="layout-cart-sidebar__checkout"
+              onClick={() => { onClose(); navigate("/checkout"); }}
+            >
+              Proceed to Checkout
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+              </svg>
+            </button>
+            <Link
+              to="/cart"
+              className="layout-cart-sidebar__view-cart"
+              onClick={onClose}
+            >
+              View Full Cart
+            </Link>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
 // ─── Cart FAB (floating, shown on all pages except /cart & /checkout) ─────────
 export function CartFAB() {
   const { cart, toast } = useCart();
   const location = useLocation();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const hide = ["/cart", "/checkout"].includes(location.pathname);
   if (hide) return null;
 
   return (
     <>
-      <Link to="/cart" className="layout-cart-fab" aria-label="View cart">
+      <button
+        className="layout-cart-fab"
+        aria-label="View cart"
+        onClick={() => setSidebarOpen(true)}
+      >
         <CartIcon />
         {cart.length > 0 && <span className="layout-cart-fab__count">{cart.length}</span>}
-      </Link>
+      </button>
       {toast && <div className="layout-toast">{toast}</div>}
+      <CartSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
     </>
   );
 }

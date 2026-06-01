@@ -12,11 +12,63 @@ import { getAllStudents } from "./adminStore";
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const today = () => new Date().toISOString().split("T")[0];
 
+/** Map backend coupon → frontend shape */
+function normaliseCoupon(c) {
+  return {
+    ...c,
+    // Map backend fields → frontend fields
+    type:        c.discount_type   === "percentage" ? "percent" : (c.discount_type || "percent"),
+    value:       parseFloat(c.discount_value  ?? c.value  ?? 0) || 0,
+    active:      c.is_active       ?? c.active       ?? true,
+    minOrder:    parseFloat(c.min_order_amount ?? c.minOrder ?? 0) || 0,
+    totalQuantity: c.max_uses      ?? c.totalQuantity ?? 0,
+    usedCount:   c.used_count      ?? c.usedCount     ?? 0,
+    expiresAt:   c.valid_until     ? c.valid_until.split("T")[0]  : (c.expiresAt  || ""),
+    startDate:   c.valid_from      ? c.valid_from.split("T")[0]   : (c.startDate  || today()),
+    assignedStudents: c.assignedStudents || [],
+    maxUsesPerStudent: c.maxUsesPerStudent || 1,
+  };
+}
+
+/** Map frontend form → backend API payload */
+function toApiCoupon(form) {
+  // Backend requires both valid_from and valid_until — never omit them
+  const now    = new Date();
+  const oneYear = new Date(now.getFullYear() + 1, now.getMonth(), now.getDate());
+
+  const validFrom  = form.startDate
+    ? new Date(form.startDate + "T00:00:00").toISOString()
+    : now.toISOString();
+
+  const validUntil = form.expiresAt
+    ? new Date(form.expiresAt + "T23:59:59").toISOString()
+    : oneYear.toISOString();
+
+  const payload = {
+    code:             (form.code || "").toUpperCase().trim(),
+    description:      form.description || "",
+    discount_type:    form.type === "percent" ? "percentage" : "flat",
+    discount_value:   Number(form.value)    || 0,
+    min_order_amount: Number(form.minOrder) || 0,
+    is_active:        form.active !== false,
+    valid_from:       validFrom,
+    valid_until:      validUntil,
+  };
+
+  // Only include max_uses if set (omit rather than send null)
+  if (form.totalQuantity && Number(form.totalQuantity) > 0) {
+    payload.max_uses = Number(form.totalQuantity);
+  }
+
+  return payload;
+}
+
 function getCouponStatus(c) {
   const now = new Date();
-  const start  = c.startDate  ? new Date(c.startDate)  : null;
-  const expiry = c.expiresAt  ? new Date(c.expiresAt)  : null;
-  if (!c.active) return { label: "Inactive",  cls: "adm-badge--gray"   };
+  const start  = (c.startDate  || c.valid_from)  ? new Date(c.startDate  || c.valid_from)  : null;
+  const expiry = (c.expiresAt  || c.valid_until) ? new Date(c.expiresAt  || c.valid_until) : null;
+  const active = c.active ?? c.is_active ?? true;
+  if (!active) return { label: "Inactive",  cls: "adm-badge--gray"   };
   if (expiry && expiry < now) return { label: "Expired",   cls: "adm-badge--red"    };
   if (start  && start  > now) return { label: "Scheduled", cls: "adm-badge--yellow" };
   return { label: "Active", cls: "adm-badge--green" };
@@ -327,9 +379,8 @@ export default function AdminCoupons() {
     setLoading(true);
     try {
       const data = await fetchAdminCoupons();
-      setCoupons(data);
+      setCoupons(data.map(normaliseCoupon));
     } catch {
-      // fallback — show empty
       setCoupons([]);
     } finally {
       setLoading(false);
@@ -359,8 +410,8 @@ export default function AdminCoupons() {
 
   const handleToggleActive = async (c) => {
     try {
-      const updated = await updateAdminCoupon(c.id, { active: !c.active });
-      setCoupons((prev) => prev.map((x) => (x.id === c.id ? { ...x, ...updated } : x)));
+      const updated = await updateAdminCoupon(c.id, { is_active: !c.active });
+      setCoupons((prev) => prev.map((x) => (x.id === c.id ? normaliseCoupon({ ...x, ...updated }) : x)));
     } catch (err) {
       alert(extractApiError(err));
     }
@@ -392,8 +443,8 @@ export default function AdminCoupons() {
       <CouponForm initial={editing} isEdit={true}
         onSave={async (data) => {
           try {
-            const updated = await updateAdminCoupon(editing.id, data);
-            setCoupons((prev) => prev.map((c) => (c.id === editing.id ? { ...c, ...updated } : c)));
+            const updated = await updateAdminCoupon(editing.id, toApiCoupon(data));
+            setCoupons((prev) => prev.map((c) => (c.id === editing.id ? normaliseCoupon({ ...c, ...updated }) : c)));
             setView("list"); setEditing(null);
           } catch (err) { alert(extractApiError(err)); }
         }}
@@ -411,8 +462,8 @@ export default function AdminCoupons() {
       <CouponForm initial={EMPTY} isEdit={false}
         onSave={async (data) => {
           try {
-            const created = await createAdminCoupon(data);
-            setCoupons((prev) => [created, ...prev]);
+            const created = await createAdminCoupon(toApiCoupon(data));
+            setCoupons((prev) => [normaliseCoupon(created), ...prev]);
             setView("list");
           } catch (err) { alert(extractApiError(err)); }
         }}

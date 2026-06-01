@@ -4,9 +4,12 @@ import StudentLayout from "./StudentLayout";
 import { getStoredUser, getOrdersApi } from "./StudentApi";
 
 const STATUS_BADGE = {
-  completed: "sd-badge--green",
-  pending:   "sd-badge--yellow",
-  cancelled: "sd-badge--red",
+  completed:   "sd-badge--green",
+  delivered:   "sd-badge--green",
+  confirmed:   "sd-badge--blue",
+  in_progress: "sd-badge--blue",
+  pending:     "sd-badge--yellow",
+  cancelled:   "sd-badge--red",
 };
 
 export default function StudentDashboard() {
@@ -26,7 +29,20 @@ export default function StudentDashboard() {
     setUser(getStoredUser());
 
     getOrdersApi()
-      .then((data) => { setOrders(data); setError(null); })
+      .then((data) => {
+        // Normalise backend fields — project is a FK id, project_title is the name
+        const normalised = data.map((o) => ({
+          ...o,
+          project:      o.project_title  || o.project  || "Unknown Project",
+          project_slug: o.project_slug   || o.slug     || null,
+          amount:       parseFloat(o.final_amount || o.total_amount || o.amount || 0),
+          date:         (o.created_at || o.date || "").split("T")[0],
+          status:       o.status || "pending",
+          payMethod:    o.pay_method || o.payMethod || "—",
+        }));
+        setOrders(normalised);
+        setError(null);
+      })
       .catch((err) => { setError(err.message); setOrders([]); })
       .finally(() => setLoading(false));
   }, []);
@@ -122,15 +138,12 @@ export default function StudentDashboard() {
               <div className="sd-recent-table">
                 <table className="sd-table">
                   <thead>
-                    <tr><th>Order</th><th>Project</th><th>Amount</th><th>Status</th></tr>
+                    <tr><th style={{ width: 36 }}>#</th><th>Project</th><th>Amount</th><th>Status</th></tr>
                   </thead>
                   <tbody>
-                    {recent.map((o) => (
-                      <tr key={o.id}>
-                        <td>
-                          <span style={{ fontWeight: 700, color: "#009fd4", fontFamily: "monospace", fontSize: ".82rem" }}>{o.id}</span>
-                          <div style={{ fontSize: ".72rem", color: "#94a3b8" }}>{o.date || o.created_at}</div>
-                        </td>
+                    {recent.map((o, idx) => (
+                      <tr key={o.id} style={{ cursor: "pointer" }} onClick={() => window.location.href = "/student/orders"}>
+                        <td style={{ color: "#94a3b8", fontSize: ".78rem", fontWeight: 600 }}>{idx + 1}</td>
                         <td style={{ maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: ".85rem" }}>{o.project || o.project_title}</td>
                         <td style={{ fontWeight: 700, color: "#009fd4" }}>₹{parseFloat(o.amount || 0).toLocaleString("en-IN")}</td>
                         <td><span className={`sd-badge ${STATUS_BADGE[o.status] || "sd-badge--gray"}`}>{o.status}</span></td>
@@ -142,10 +155,10 @@ export default function StudentDashboard() {
 
               {/* Mobile cards */}
               <div className="sd-recent-mobile">
-                {recent.map((o) => (
-                  <div key={o.id} className="sd-recent-mobile__item">
+                {recent.map((o, idx) => (
+                  <Link key={o.id} to="/student/orders" className="sd-recent-mobile__item" style={{ textDecoration: "none", display: "block" }}>
                     <div className="sd-recent-mobile__top">
-                      <span className="sd-recent-mobile__id">{o.id}</span>
+                      <span style={{ color: "#94a3b8", fontSize: ".75rem", fontWeight: 700 }}>#{idx + 1}</span>
                       <span className={`sd-badge ${STATUS_BADGE[o.status] || "sd-badge--gray"}`}>{o.status}</span>
                     </div>
                     <div className="sd-recent-mobile__project">{o.project || o.project_title}</div>
@@ -153,7 +166,7 @@ export default function StudentDashboard() {
                       <span className="sd-recent-mobile__date">{o.date || o.created_at}</span>
                       <span className="sd-recent-mobile__amount">₹{parseFloat(o.amount || 0).toLocaleString("en-IN")}</span>
                     </div>
-                  </div>
+                  </Link>
                 ))}
               </div>
             </>

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useCart } from "./CartContext";
-import { validateCoupon, incrementCouponUsage } from "./admin/adminStore";
-import { getProjectsApi } from "./student/StudentApi";
+import { incrementCouponUsage } from "./admin/adminStore";
+import { getProjectsApi, validateCouponAnywhere } from "./student/StudentApi";
 import "./ProjectDetailPage.css";
 
 const BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
@@ -193,6 +193,7 @@ function PurchasePanel({ project, onAddToCart }) {
   const [couponDiscount, setCouponDiscount] = useState(0);
   const [couponError, setCouponError] = useState("");
   const [couponObj, setCouponObj] = useState(null);
+  const [couponLoading, setCouponLoading] = useState(false);
   const [added, setAdded] = useState(false);
 
   const safePrice    = project.price         || 0;
@@ -200,12 +201,27 @@ function PurchasePanel({ project, onAddToCart }) {
   const baseDiscount = safeOriginal > 0 ? Math.round(((safeOriginal - safePrice) / safeOriginal) * 100) : 0;
   const finalPrice   = applied ? Math.max(0, safePrice - couponDiscount) : safePrice;
 
-  const applyCoupon = () => {
-    const result = validateCoupon(coupon, safePrice);
-    if (result.valid) { setApplied(true); setCouponDiscount(result.discount); setCouponObj(result.coupon); setCouponError(""); }
-    else { setCouponError(result.error); setApplied(false); setCouponDiscount(0); }
+  const applyCoupon = async () => {
+    if (!coupon.trim()) { setCouponError("Please enter a coupon code."); return; }
+    setCouponLoading(true);
+    setCouponError("");
+    const result = await validateCouponAnywhere(coupon.trim(), safePrice);
+    setCouponLoading(false);
+    if (result.valid) {
+      setApplied(true);
+      setCouponDiscount(result.discount);
+      setCouponObj(result.coupon);
+      setCouponError("");
+    } else {
+      setCouponError(result.error || "Invalid coupon code.");
+      setApplied(false);
+      setCouponDiscount(0);
+    }
   };
-  const removeCoupon = () => { setApplied(false); setCouponDiscount(0); setCoupon(""); setCouponObj(null); setCouponError(""); };
+
+  const removeCoupon = () => {
+    setApplied(false); setCouponDiscount(0); setCoupon(""); setCouponObj(null); setCouponError("");
+  };
 
   const handleAddToCart = () => {
     if (applied && couponObj) incrementCouponUsage(couponObj.code);
@@ -242,8 +258,11 @@ function PurchasePanel({ project, onAddToCart }) {
           <div className="pdp-panel__coupon-row">
             <input type="text" placeholder="Enter coupon code" value={coupon}
               onChange={(e) => { setCoupon(e.target.value.toUpperCase()); setCouponError(""); }}
-              className={`pdp-panel__coupon-input${couponError ? " pdp-panel__coupon-input--error" : ""}`} />
-            <button className="pdp-btn pdp-btn--outline pdp-btn--sm" onClick={applyCoupon} type="button">Apply</button>
+              className={`pdp-panel__coupon-input${couponError ? " pdp-panel__coupon-input--error" : ""}`}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); applyCoupon(); } }} />
+            <button className="pdp-btn pdp-btn--outline pdp-btn--sm" onClick={applyCoupon} type="button" disabled={couponLoading}>
+              {couponLoading ? "..." : "Apply"}
+            </button>
           </div>
           {couponError && <p className="pdp-panel__coupon-error">{couponError}</p>}
         </div>

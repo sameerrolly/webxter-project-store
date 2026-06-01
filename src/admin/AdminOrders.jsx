@@ -7,9 +7,109 @@ import {
   extractApiError,
 } from "./adminApi";
 
-const STATUS_OPTIONS = ["pending", "completed", "cancelled"];
-const STATUS_BADGE   = { completed: "adm-badge--green", pending: "adm-badge--yellow", cancelled: "adm-badge--red" };
-const PAY_LABEL      = { upi: "UPI / GPay", whatsapp: "WhatsApp", bank: "Bank Transfer" };
+// Backend status values
+const STATUS_OPTIONS = [
+  { value: "pending",     label: "Pending"     },
+  { value: "confirmed",   label: "Confirmed"   },
+  { value: "in_progress", label: "In Progress" },
+  { value: "delivered",   label: "Delivered"   },
+  { value: "cancelled",   label: "Cancelled"   },
+];
+
+const STATUS_BADGE = {
+  pending:     "adm-badge--yellow",
+  confirmed:   "adm-badge--blue",
+  in_progress: "adm-badge--blue",
+  delivered:   "adm-badge--green",
+  completed:   "adm-badge--green",
+  cancelled:   "adm-badge--red",
+};
+
+const STATUS_LABEL = {
+  pending:     "Pending",
+  confirmed:   "Confirmed",
+  in_progress: "In Progress",
+  delivered:   "Delivered",
+  completed:   "Completed",
+  cancelled:   "Cancelled",
+};
+
+const PAY_LABEL = { upi: "UPI / GPay", whatsapp: "WhatsApp", bank: "Bank Transfer", razorpay: "Razorpay" };
+
+// ─── License text generator ───────────────────────────────────────────────────
+function generateLicense(order, template) {
+  if (template) return template
+    .replace(/\{order_id\}/g,   order.id)
+    .replace(/\{project\}/g,    order.customer_name ?? order.customer ?? "")
+    .replace(/\{customer\}/g,   order.customer_name ?? order.customer ?? "")
+    .replace(/\{email\}/g,      order.email ?? "")
+    .replace(/\{amount\}/g,     `₹${Number(order.amount || 0).toLocaleString("en-IN")}`)
+    .replace(/\{date\}/g,       order.date ?? order.created_at ?? "")
+    .replace(/\{year\}/g,       new Date().getFullYear());
+
+  return `WEBXTER PROJECT LICENSE
+========================
+License ID   : LIC-${order.id}
+Order ID     : ${order.id}
+Project      : ${order.project ?? order.project_title ?? ""}
+Licensed To  : ${order.customer_name ?? order.customer ?? ""}
+Email        : ${order.email ?? "—"}
+Amount Paid  : ₹${Number(order.amount || 0).toLocaleString("en-IN")}
+Date         : ${order.date ?? (order.created_at ?? "").split("T")[0]}
+Issued By    : Webxter (webxter.in)
+
+TERMS OF USE
+------------
+1. Non-exclusive, non-transferable license for personal academic use only.
+2. Redistribution or resale is strictly prohibited.
+3. Webxter retains all intellectual property rights.
+
+For support: projects@webxter.in | WhatsApp: +91-8264796534
+© ${new Date().getFullYear()} Webxter. All rights reserved.`;
+}
+
+function generateInvoice(order, template) {
+  if (template) return template
+    .replace(/\{order_id\}/g,   order.id)
+    .replace(/\{project\}/g,    order.project ?? order.project_title ?? "")
+    .replace(/\{customer\}/g,   order.customer_name ?? order.customer ?? "")
+    .replace(/\{email\}/g,      order.email ?? "")
+    .replace(/\{amount\}/g,     `₹${Number(order.amount || 0).toLocaleString("en-IN")}`)
+    .replace(/\{date\}/g,       order.date ?? (order.created_at ?? "").split("T")[0])
+    .replace(/\{year\}/g,       new Date().getFullYear());
+
+  return `WEBXTER — INVOICE
+=================
+Invoice No   : INV-${order.id}
+Order ID     : ${order.id}
+Date         : ${order.date ?? (order.created_at ?? "").split("T")[0]}
+Issued By    : Webxter (webxter.in)
+
+BILL TO
+-------
+Name         : ${order.customer_name ?? order.customer ?? ""}
+Email        : ${order.email ?? "—"}
+
+ITEM
+----
+Project      : ${order.project ?? order.project_title ?? ""}
+Amount       : ₹${Number(order.amount || 0).toLocaleString("en-IN")}
+Payment      : ${PAY_LABEL[order.payMethod ?? order.pay_method] ?? "Razorpay"}
+
+TOTAL        : ₹${Number(order.amount || 0).toLocaleString("en-IN")}
+
+Thank you for your purchase!
+For support: projects@webxter.in | WhatsApp: +91-8264796534
+© ${new Date().getFullYear()} Webxter. All rights reserved.`;
+}
+
+function downloadText(content, filename) {
+  const blob = new Blob([content], { type: "text/plain" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
 
 function Spinner() {
   return (
@@ -46,13 +146,32 @@ export default function AdminOrders() {
   useEffect(() => { load(); }, []);
 
   // Normalise field names from Django (snake_case) or legacy (camelCase)
-  const norm = (o) => ({
-    ...o,
-    customer: o.customer_name ?? o.customer ?? "",
-    project:  o.project_title ?? o.project  ?? "",
-    payMethod: o.pay_method   ?? o.payMethod ?? "",
-    date:     (o.date ?? o.created_at ?? "").split("T")[0],
-  });
+  // notes format: "Payment: razorpay | TxnID: xxx | Phone: 9876543210 | College: IIT Delhi"
+  const norm = (o) => {
+    const notes = o.notes || "";
+    const extract = (key) => {
+      const m = notes.match(new RegExp(key + ":\\s*([^|]+)"));
+      return m ? m[1].trim() : "";
+    };
+    const phone   = o.phone   || extract("Phone")   || "";
+    const college = o.college || extract("College")  || "";
+    const txnId   = o.txn_id  || extract("TxnID")   || "";
+    const payMethod = o.pay_method ?? o.payMethod ?? extract("Payment") ?? "razorpay";
+
+    return {
+      ...o,
+      customer:  o.client_name   ?? o.customer_name ?? o.customer ?? "",
+      email:     o.client_email  ?? o.email         ?? "",
+      project:   o.project_title ?? o.project       ?? "",
+      amount:    parseFloat(o.final_amount || o.total_amount || o.amount || 0),
+      payMethod,
+      phone,
+      college,
+      txnId,
+      date:      (o.date ?? o.created_at ?? "").split("T")[0],
+      status:    o.status || "pending",
+    };
+  };
 
   const filtered = orders.map(norm).filter((o) => {
     const q = search.toLowerCase();
@@ -93,8 +212,22 @@ export default function AdminOrders() {
   };
 
   const totalRevenue = orders
-    .filter((o) => o.status === "completed")
+    .filter((o) => o.status === "delivered" || o.status === "completed")
     .reduce((s, o) => s + Number(o.amount || 0), 0);
+
+  const [licenseTemplate, setLicenseTemplate] = React.useState(
+    () => localStorage.getItem("wx_admin_license_template") || ""
+  );
+  const [invoiceTemplate, setInvoiceTemplate] = React.useState(
+    () => localStorage.getItem("wx_admin_invoice_template") || ""
+  );
+  const [showTemplateEditor, setShowTemplateEditor] = React.useState(false);
+
+  const saveTemplates = () => {
+    localStorage.setItem("wx_admin_license_template", licenseTemplate);
+    localStorage.setItem("wx_admin_invoice_template", invoiceTemplate);
+    setShowTemplateEditor(false);
+  };
 
   return (
     <AdminLayout>
@@ -105,19 +238,26 @@ export default function AdminOrders() {
             {orders.length} total · ₹{totalRevenue.toLocaleString("en-IN")} revenue
           </div>
         </div>
-        <button className="adm-btn adm-btn--ghost adm-btn--sm" onClick={load} disabled={loading}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-          Refresh
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="adm-btn adm-btn--ghost adm-btn--sm" onClick={() => setShowTemplateEditor(true)}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            Edit License/Invoice
+          </button>
+          <button className="adm-btn adm-btn--ghost adm-btn--sm" onClick={load} disabled={loading}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            Refresh
+          </button>
+        </div>
       </div>
 
       {/* Quick stats */}
       <div className="adm-stats" style={{ marginBottom: 24 }}>
         {[
-          { label: "Total",     value: orders.length,                                          cls: "adm-badge--blue"   },
-          { label: "Completed", value: orders.filter((o) => o.status === "completed").length,  cls: "adm-badge--green"  },
-          { label: "Pending",   value: orders.filter((o) => o.status === "pending").length,    cls: "adm-badge--yellow" },
-          { label: "Cancelled", value: orders.filter((o) => o.status === "cancelled").length,  cls: "adm-badge--red"    },
+          { label: "Total",       value: orders.length },
+          { label: "Delivered",   value: orders.filter((o) => o.status === "delivered" || o.status === "completed").length },
+          { label: "In Progress", value: orders.filter((o) => o.status === "in_progress" || o.status === "confirmed").length },
+          { label: "Pending",     value: orders.filter((o) => o.status === "pending").length },
+          { label: "Cancelled",   value: orders.filter((o) => o.status === "cancelled").length },
         ].map((s) => (
           <div key={s.label} className="adm-stat-card" style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
             <div>
@@ -143,11 +283,10 @@ export default function AdminOrders() {
           <input className="adm-search__input" placeholder="Search orders…" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <div className="adm-filter-row" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {["all", "pending", "completed", "cancelled"].map((s) => (
+          {["all", "pending", "confirmed", "in_progress", "delivered", "cancelled"].map((s) => (
             <button key={s} onClick={() => setStatusFilter(s)}
-              className={`adm-btn adm-btn--sm ${statusFilter === s ? "adm-btn--primary" : "adm-btn--ghost"}`}
-              style={{ textTransform: "capitalize" }}>
-              {s}
+              className={`adm-btn adm-btn--sm ${statusFilter === s ? "adm-btn--primary" : "adm-btn--ghost"}`}>
+              {STATUS_LABEL[s] || s}
             </button>
           ))}
         </div>
@@ -178,7 +317,7 @@ export default function AdminOrders() {
                     <td style={{ maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: ".85rem" }}>{o.project}</td>
                     <td style={{ fontWeight: 700, color: "#009fd4" }}>₹{Number(o.amount).toLocaleString("en-IN")}</td>
                     <td><span className="adm-badge adm-badge--gray" style={{ fontSize: ".7rem" }}>{PAY_LABEL[o.payMethod] || o.payMethod || "—"}</span></td>
-                    <td><span className={`adm-badge ${STATUS_BADGE[o.status] || "adm-badge--gray"}`}>{o.status}</span></td>
+                    <td><span className={`adm-badge ${STATUS_BADGE[o.status] || "adm-badge--gray"}`}>{STATUS_LABEL[o.status] || o.status}</span></td>
                     <td style={{ color: "#94a3b8", fontSize: ".8rem" }}>{o.date}</td>
                     <td onClick={(e) => e.stopPropagation()}>
                       <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
@@ -189,7 +328,7 @@ export default function AdminOrders() {
                           disabled={saving === o.id}
                           onChange={(e) => handleStatusChange(o.id, e.target.value)}
                         >
-                          {STATUS_OPTIONS.map((s) => <option key={s} value={s} style={{ textTransform: "capitalize" }}>{s}</option>)}
+                          {STATUS_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                         </select>
                         <button
                           className="adm-btn adm-btn--danger adm-btn--sm adm-btn--icon"
@@ -213,14 +352,16 @@ export default function AdminOrders() {
       {selected && (
         <div className="adm-modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}
           onClick={() => setSelected(null)}>
-          <div className="adm-modal-box" style={{ background: "#fff", borderRadius: 18, padding: 32, maxWidth: 480, width: "100%", boxShadow: "0 20px 60px rgba(0,0,0,.2)", maxHeight: "90vh", overflowY: "auto" }}
+          <div className="adm-modal-box" style={{ background: "#fff", borderRadius: 18, padding: 32, maxWidth: 520, width: "100%", boxShadow: "0 20px 60px rgba(0,0,0,.2)", maxHeight: "90vh", overflowY: "auto" }}
             onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
               <div>
-                <div style={{ fontWeight: 800, fontSize: "1.1rem", color: "#0f172a" }}>{selected.id}</div>
-                <div style={{ fontSize: ".8rem", color: "#94a3b8", marginTop: 2 }}>{selected.date}</div>
+                <div style={{ fontWeight: 800, fontSize: "1.1rem", color: "#0f172a" }}>Order #{selected.id}</div>
+                <span className={`adm-badge ${STATUS_BADGE[selected.status] || "adm-badge--gray"}`} style={{ marginTop: 6, display: "inline-flex" }}>
+                  {STATUS_LABEL[selected.status] || selected.status}
+                </span>
               </div>
-              <button onClick={() => setSelected(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", fontSize: "1.2rem" }}>×</button>
+              <button onClick={() => setSelected(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", fontSize: "1.4rem", lineHeight: 1 }}>×</button>
             </div>
             {[
               ["Customer", selected.customer],
@@ -229,25 +370,83 @@ export default function AdminOrders() {
               ["College",  selected.college || "—"],
               ["Project",  selected.project],
               ["Amount",   `₹${Number(selected.amount).toLocaleString("en-IN")}`],
-              ["Payment",  PAY_LABEL[selected.payMethod] || selected.payMethod || "—"],
+              ["Payment",  PAY_LABEL[selected.payMethod] || selected.payMethod || "Razorpay"],
+              ["Txn ID",   selected.txnId || "—"],
+              ["Date",     selected.date],
+              ["Notes",    selected.notes || "—"],
             ].map(([k, v]) => (
               <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #f1f5f9", fontSize: ".875rem" }}>
-                <span style={{ color: "#64748b", fontWeight: 500 }}>{k}</span>
-                <span style={{ color: "#0f172a", fontWeight: 600, textAlign: "right", maxWidth: "60%" }}>{v}</span>
+                <span style={{ color: "#64748b", fontWeight: 500, flexShrink: 0, marginRight: 12 }}>{k}</span>
+                <span style={{ color: "#0f172a", fontWeight: 600, textAlign: "right", wordBreak: "break-word", maxWidth: "65%" }}>{v}</span>
               </div>
             ))}
             <div style={{ marginTop: 20 }}>
-              <label style={{ fontSize: ".82rem", fontWeight: 600, color: "#334155", display: "block", marginBottom: 6 }}>Update Status</label>
-              <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ fontSize: ".78rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: ".4px", marginBottom: 10 }}>Update Status</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {STATUS_OPTIONS.map((st) => (
-                  <button key={st} disabled={saving === selected.id}
-                    onClick={() => handleStatusChange(selected.id, st)}
-                    className={`adm-btn adm-btn--sm ${selected.status === st ? "adm-btn--primary" : "adm-btn--ghost"}`}
-                    style={{ textTransform: "capitalize", flex: 1 }}>
-                    {st}
+                  <button key={st.value} disabled={saving === selected.id}
+                    onClick={() => handleStatusChange(selected.id, st.value)}
+                    className={`adm-btn adm-btn--sm ${selected.status === st.value ? "adm-btn--primary" : "adm-btn--ghost"}`}>
+                    {st.label}
                   </button>
                 ))}
               </div>
+            </div>
+            <div style={{ marginTop: 20, borderTop: "1px solid #f1f5f9", paddingTop: 16 }}>
+              <div style={{ fontSize: ".78rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: ".4px", marginBottom: 10 }}>Documents</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button className="adm-btn adm-btn--ghost adm-btn--sm"
+                  onClick={() => downloadText(generateLicense(selected, licenseTemplate), `License-${selected.id}.txt`)}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                  License
+                </button>
+                <button className="adm-btn adm-btn--ghost adm-btn--sm"
+                  onClick={() => downloadText(generateInvoice(selected, invoiceTemplate), `Invoice-${selected.id}.txt`)}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="13" x2="15" y2="13"/></svg>
+                  Invoice
+                </button>
+                <button className="adm-btn adm-btn--ghost adm-btn--sm" onClick={() => setShowTemplateEditor(true)}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  Edit Templates
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Template editor modal */}
+      {showTemplateEditor && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 600, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}
+          onClick={() => setShowTemplateEditor(false)}>
+          <div style={{ background: "#fff", borderRadius: 18, padding: 32, maxWidth: 680, width: "100%", boxShadow: "0 20px 60px rgba(0,0,0,.2)", maxHeight: "90vh", overflowY: "auto" }}
+            onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <div style={{ fontWeight: 800, fontSize: "1.1rem", color: "#0f172a" }}>Edit License & Invoice Templates</div>
+              <button onClick={() => setShowTemplateEditor(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", fontSize: "1.4rem" }}>×</button>
+            </div>
+            <div style={{ background: "rgba(0,159,212,.06)", border: "1px solid rgba(0,159,212,.2)", borderRadius: 10, padding: "10px 14px", fontSize: ".78rem", color: "#0369a1", marginBottom: 20 }}>
+              Variables: <code>{"{order_id}"}</code> <code>{"{project}"}</code> <code>{"{customer}"}</code> <code>{"{email}"}</code> <code>{"{amount}"}</code> <code>{"{date}"}</code> <code>{"{year}"}</code> — Leave blank to use the default.
+            </div>
+            <div className="adm-field" style={{ marginBottom: 20 }}>
+              <label className="adm-field__label">License Certificate Template</label>
+              <textarea className="adm-field__input" rows={10} value={licenseTemplate}
+                onChange={(e) => setLicenseTemplate(e.target.value)}
+                placeholder="Leave blank to use default template…" />
+            </div>
+            <div className="adm-field" style={{ marginBottom: 24 }}>
+              <label className="adm-field__label">Invoice Template</label>
+              <textarea className="adm-field__input" rows={10} value={invoiceTemplate}
+                onChange={(e) => setInvoiceTemplate(e.target.value)}
+                placeholder="Leave blank to use default template…" />
+            </div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button className="adm-btn adm-btn--ghost" onClick={() => { setLicenseTemplate(""); setInvoiceTemplate(""); }}>Reset to Default</button>
+              <button className="adm-btn adm-btn--ghost" onClick={() => setShowTemplateEditor(false)}>Cancel</button>
+              <button className="adm-btn adm-btn--primary" onClick={saveTemplates}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                Save Templates
+              </button>
             </div>
           </div>
         </div>

@@ -1,8 +1,7 @@
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import StudentLayout from "./StudentLayout";
-import { getOrdersApi, getStoredUser } from "./StudentApi";
-import { getProjects } from "../admin/adminStore";
+import { getOrdersApi, getProjectsApi, getStoredUser } from "./StudentApi";
 
 // ─── License generator ────────────────────────────────────────────────────────
 function downloadLicense(order, user) {
@@ -46,7 +45,77 @@ For support: projects@webxter.in | WhatsApp: +91-8264796534
   URL.revokeObjectURL(url);
 }
 
-const STATUS_BADGE = { completed: "sd-badge--green", pending: "sd-badge--yellow", cancelled: "sd-badge--red" };
+// ─── Invoice generator ────────────────────────────────────────────────────────
+function downloadInvoice(order, user) {
+  const studentName = user
+    ? [user.first_name, user.last_name].filter(Boolean).join(" ") || user.email
+    : "Student";
+  const invoiceText = `WEBXTER — INVOICE
+=================
+
+Invoice No   : INV-${order.id}
+Order ID     : ${order.id}
+Date         : ${order.date || new Date().toISOString().split("T")[0]}
+Issued By    : Webxter (webxter.in)
+
+BILL TO
+-------
+Name         : ${studentName}
+Email        : ${user?.email || "—"}
+Phone        : ${user?.phone || "—"}
+College      : ${order.college || "—"}
+
+ITEM
+----
+Project      : ${order.project || order.project_title}
+Amount       : ₹${(order.amount || 0).toLocaleString("en-IN")}
+Payment      : Razorpay
+
+TOTAL        : ₹${(order.amount || 0).toLocaleString("en-IN")}
+
+Thank you for your purchase!
+For support: projects@webxter.in | WhatsApp: +91-8264796534
+
+© ${new Date().getFullYear()} Webxter. All rights reserved.
+`;
+  const blob = new Blob([invoiceText], { type: "text/plain" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = `Invoice-${order.id}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Human-readable status labels
+const STATUS_LABELS = {
+  pending:     "Pending",
+  confirmed:   "Confirmed",
+  in_progress: "In Progress",
+  delivered:   "Delivered",
+  completed:   "Completed",
+  cancelled:   "Cancelled",
+};
+
+const STATUS_BADGE = {
+  completed:   "sd-badge--green",
+  delivered:   "sd-badge--green",
+  confirmed:   "sd-badge--blue",
+  in_progress: "sd-badge--blue",
+  pending:     "sd-badge--yellow",
+  cancelled:   "sd-badge--red",
+};
+
+// Map backend status → display label
+function statusLabel(s) {
+  const map = { delivered: "completed", confirmed: "confirmed", in_progress: "in progress" };
+  return map[s] || s;
+}
+
+// A "completed" order is one that is delivered or completed
+function isCompleted(o) {
+  return o.status === "delivered" || o.status === "completed";
+}
 const PAY_LABEL    = { upi: "UPI / GPay", whatsapp: "WhatsApp", bank: "Bank Transfer" };
 const FILTERS      = ["all", "completed", "pending", "cancelled"];
 
@@ -86,34 +155,39 @@ const GridIcon = () => (
 );
 
 // ─── Grid card (download view) ────────────────────────────────────────────────
-function DownloadCard({ order, project }) {
-  const files = project?.projectFiles?.length > 0 ? project.projectFiles : DEFAULT_FILES;
-  const thumb = project?.media?.[0]?.url || project?.screenshots?.[0];
+function DownloadCard({ order, project, session }) {
+  const delivered = isCompleted(order);
+  // For delivered orders use project files; for pending show contact links
+  const files = delivered
+    ? (project?.projectFiles?.length > 0 ? project.projectFiles : DEFAULT_FILES)
+    : [
+        { label: "WhatsApp us for status update", url: "https://wa.me/918264796534", type: "other" },
+        { label: "Email: projects@webxter.in",    url: "mailto:projects@webxter.in",  type: "docs"  },
+      ];
+  const thumb = project?.thumbnail || project?.media?.find((m) => m.is_featured || m.featured)?.url
+    || project?.media?.[0]?.url || project?.screenshots?.[0];
 
   return (
     <div className="sd-dl-card">
-      {/* Thumbnail */}
       <div className="sd-dl-card__thumb">
         {thumb
-          ? <img src={thumb} alt={order.project} />
+          ? <img src={thumb} alt={order.project} onError={(e) => { e.currentTarget.style.display = "none"; }} />
           : <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
         }
-        <span className="sd-badge sd-badge--green sd-dl-card__status">Completed</span>
+        <span className={`sd-badge ${delivered ? "sd-badge--green" : "sd-badge--yellow"} sd-dl-card__status`}>
+          {delivered ? "Delivered" : order.status}
+        </span>
       </div>
 
-      {/* Info */}
       <div className="sd-dl-card__body">
         <div className="sd-dl-card__title">{order.project}</div>
         <div className="sd-dl-card__meta">
-          <span className="sd-dl-card__id">{order.id}</span>
-          <span>·</span>
-          <span>₹{order.amount.toLocaleString("en-IN")}</span>
+          <span>₹{(order.amount || 0).toLocaleString("en-IN")}</span>
           <span>·</span>
           <span>{order.date}</span>
         </div>
 
-        {/* Includes chips */}
-        {project?.includes?.length > 0 && (
+        {delivered && project?.includes?.length > 0 && (
           <div className="sd-dl-card__includes">
             {project.includes.map((inc) => (
               <span key={inc} className="sd-dl-card__chip">{inc}</span>
@@ -121,7 +195,12 @@ function DownloadCard({ order, project }) {
           </div>
         )}
 
-        {/* Download links */}
+        {!delivered && (
+          <div style={{ fontSize: ".78rem", color: "#d97706", background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.2)", borderRadius: 8, padding: "8px 12px", marginBottom: 8 }}>
+            Your order is being processed. Files will appear here once delivered.
+          </div>
+        )}
+
         <div className="sd-dl-card__files">
           {files.map((f, i) => (
             <a key={i} href={f.url} target="_blank" rel="noopener noreferrer" className="sd-dl-file">
@@ -136,11 +215,22 @@ function DownloadCard({ order, project }) {
           ))}
         </div>
 
-        {project?.slug && (
-          <Link to={`/projects/${project.slug}`} className="sd-btn sd-btn--ghost sd-btn--sm" style={{ alignSelf: "flex-start", marginTop: 4 }}>
-            View Project →
-          </Link>
-        )}
+        <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+          {delivered && (
+            <button
+              className="sd-btn sd-btn--ghost sd-btn--sm"
+              onClick={() => downloadLicense(order, session)}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              License
+            </button>
+          )}
+          {project?.slug && (
+            <Link to={`/projects/${project.slug}`} className="sd-btn sd-btn--ghost sd-btn--sm">
+              View Project →
+            </Link>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -150,23 +240,36 @@ function DownloadCard({ order, project }) {
 export default function StudentOrders() {
   const session  = getStoredUser();
   const [orders,   setOrders]   = useState([]);
+  const [projects, setProjects] = useState([]);
   const [loading,  setLoading]  = useState(true);
-  const projects = useMemo(() => getProjects(), []);
 
   useEffect(() => {
-    getOrdersApi()
-      .then(setOrders)
-      .catch(() => setOrders([]))
-      .finally(() => setLoading(false));
+    // Fetch orders and projects in parallel
+    Promise.all([
+      getOrdersApi().catch(() => []),
+      getProjectsApi().catch(() => []),
+    ]).then(([orderData, projectData]) => {
+      const normalised = orderData.map((o) => ({
+        ...o,
+        project:   o.project_title  || o.project  || "Unknown Project",
+        amount:    parseFloat(o.final_amount || o.total_amount || o.amount || 0),
+        date:      (o.created_at || o.date || "").split("T")[0],
+        status:    o.status || "pending",
+        payMethod: o.pay_method || o.payMethod || "razorpay",
+        college:   o.college || "",
+      }));
+      setOrders(normalised);
+      setProjects(projectData);
+    }).finally(() => setLoading(false));
   }, []);
 
   const [filter,   setFilter]   = useState("all");
-  const [viewMode, setViewMode] = useState("list"); // "list" | "grid"
+  const [viewMode, setViewMode] = useState("list");
   const [selected, setSelected] = useState(null);
   const filtered = filter === "all" ? orders : orders.filter((o) => o.status === filter);
 
-  // For grid view — only completed orders have downloads
-  const completedFiltered = filtered.filter((o) => o.status === "completed");
+  // Grid view — show all filtered orders (pending shows contact links, delivered shows files)
+  const gridFiltered = filtered;
 
   return (
     <StudentLayout title="My Orders">
@@ -176,7 +279,7 @@ export default function StudentOrders() {
         <div>
           <div className="sd-page-header__title">My Orders</div>
           <div className="sd-page-header__sub">
-            {loading ? "Loading…" : `${orders.length} total · ${orders.filter((o) => o.status === "completed").length} completed`}
+            {loading ? "Loading…" : `${orders.length} total · ${orders.filter(isCompleted).length} completed`}
           </div>
         </div>
 
@@ -218,7 +321,7 @@ export default function StudentOrders() {
       {/* ── Grid view — downloads ── */}
       {viewMode === "grid" && (
         <>
-          {completedFiltered.length === 0 ? (
+          {gridFiltered.length === 0 ? (
             <div className="sd-empty">
               <div className="sd-empty__icon">
                 <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -227,15 +330,9 @@ export default function StudentOrders() {
                   <line x1="12" y1="15" x2="12" y2="3"/>
                 </svg>
               </div>
-              <h3>No downloads available</h3>
-              <p>
-                {filter === "all"
-                  ? "Completed orders will show download links here."
-                  : `No completed orders match the "${filter}" filter.`}
-              </p>
-              <button className="sd-btn sd-btn--ghost sd-btn--sm" style={{ marginTop: 8 }} onClick={() => setFilter("all")}>
-                Show all orders
-              </button>
+              <h3>No orders yet</h3>
+              <p>Place an order to see your downloads here.</p>
+              <Link to="/" className="sd-btn sd-btn--primary sd-btn--sm" style={{ marginTop: 8 }}>Browse Projects</Link>
             </div>
           ) : (
             <>
@@ -243,12 +340,14 @@ export default function StudentOrders() {
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                   <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
                 </svg>
-                <span>Files are delivered via the links below. Issues? WhatsApp <strong>+91-8264796534</strong></span>
+                <span>Delivered orders show download links. Pending orders show contact options. Issues? WhatsApp <strong>+91-8264796534</strong></span>
               </div>
               <div className="sd-dl-grid">
-                {completedFiltered.map((o) => {
-                  const proj = projects.find((p) => p.title === o.project);
-                  return <DownloadCard key={o.id} order={o} project={proj} />;
+                {gridFiltered.map((o) => {
+                  const proj = projects.find(
+                    (p) => p.title === o.project || String(p.id) === String(o.project_id || o.project)
+                  );
+                  return <DownloadCard key={o.id} order={o} project={proj} session={session} />;
                 })}
               </div>
             </>
@@ -279,7 +378,6 @@ export default function StudentOrders() {
                 <div key={o.id} className="sd-order-card" onClick={() => setSelected(o)}>
                   <div className="sd-order-card__left">
                     <div className="sd-order-card__meta">
-                      <span className="sd-order-card__id">{o.id}</span>
                       <span className={`sd-badge ${STATUS_BADGE[o.status] || "sd-badge--gray"}`}>{o.status}</span>
                       <span className="sd-order-card__date">{o.date}</span>
                     </div>
@@ -288,7 +386,7 @@ export default function StudentOrders() {
                   </div>
                   <div className="sd-order-card__right">
                     <div className="sd-order-card__amount">₹{o.amount.toLocaleString("en-IN")}</div>
-                    {o.status === "completed" && (
+                    {isCompleted(o) && (
                       <div className="sd-order-card__actions">
                         <button
                           className="sd-btn sd-btn--primary sd-btn--sm"
@@ -332,68 +430,107 @@ export default function StudentOrders() {
       )}
 
       {/* ── Order detail modal ── */}
-      {selected && (
-        <div className="sd-modal-overlay" onClick={() => setSelected(null)}>
-          <div className="sd-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="sd-modal__header">
-              <div>
-                <div style={{ fontWeight: 800, fontSize: "1.05rem", color: "#0f172a" }}>{selected.id}</div>
-                <span className={`sd-badge ${STATUS_BADGE[selected.status] || "sd-badge--gray"}`} style={{ marginTop: 6, display: "inline-flex" }}>{selected.status}</span>
+      {selected && (() => {
+        const selProj = projects.find(
+          (p) => p.title === selected.project || String(p.id) === String(selected.project_id || selected.project)
+        );
+        const selDelivered = isCompleted(selected);
+        return (
+          <div className="sd-modal-overlay" onClick={() => setSelected(null)}>
+            <div className="sd-modal" onClick={(e) => e.stopPropagation()}>
+              {/* Header */}
+              <div className="sd-modal__header">
+                <div>
+                  <span className={`sd-badge ${STATUS_BADGE[selected.status] || "sd-badge--gray"}`} style={{ display: "inline-flex" }}>
+                    {STATUS_LABELS[selected.status] || selected.status}
+                  </span>
+                </div>
+                <button onClick={() => setSelected(null)} className="sd-modal__close">×</button>
               </div>
-              <button onClick={() => setSelected(null)} className="sd-modal__close">×</button>
-            </div>
 
-            {[
-              ["Project",  selected.project || selected.project_title],
-              ["Amount",   `₹${(selected.amount || 0).toLocaleString("en-IN")}`],
-              ["Payment",  PAY_LABEL[selected.payMethod || selected.pay_method] || selected.payMethod || selected.pay_method || "—"],
-              ["Date",     selected.date || selected.created_at],
-              ["College",  selected.college || "—"],
-            ].map(([k, v]) => (
-              <div key={k} className="sd-modal__row">
-                <span>{k}</span><span>{v}</span>
-              </div>
-            ))}
+              {/* Details */}
+              {[
+                ["Project",  selected.project || selected.project_title],
+                ["Amount",   `₹${(selected.amount || 0).toLocaleString("en-IN")}`],
+                ["Payment",  PAY_LABEL[selected.payMethod || selected.pay_method] || selected.payMethod || selected.pay_method || "Razorpay"],
+                ["Date",     selected.date || (selected.created_at || "").split("T")[0]],
+                ["College",  selected.college || "—"],
+              ].map(([k, v]) => (
+                <div key={k} className="sd-modal__row">
+                  <span>{k}</span><span>{v}</span>
+                </div>
+              ))}
 
-            {selected.status === "completed" && (
-              <div className="sd-order-card__actions sd-order-card__actions--full" style={{ marginTop: 20 }}>
-                <button
-                  className="sd-btn sd-btn--primary sd-btn--full"
-                  onClick={() => { setSelected(null); setViewMode("grid"); setFilter("completed"); }}
-                >
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                    <polyline points="7 10 12 15 17 10"/>
-                    <line x1="12" y1="15" x2="12" y2="3"/>
-                  </svg>
+              {/* Download buttons — always available */}
+              <div style={{ marginTop: 20, display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ fontSize: ".78rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: ".4px", marginBottom: 4 }}>
                   Downloads
-                </button>
-                <button
-                  className="sd-btn sd-btn--ghost sd-btn--full"
-                  onClick={() => downloadLicense(selected, session)}
-                  title="Download your license certificate"
-                >
+                </div>
+
+                {/* License */}
+                <button className="sd-btn sd-btn--ghost sd-btn--full" onClick={() => downloadLicense(selected, session)}
+                  style={{ justifyContent: "flex-start", gap: 10 }}>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                     <polyline points="14 2 14 8 20 8"/>
                     <line x1="9" y1="13" x2="15" y2="13"/>
                     <line x1="9" y1="17" x2="12" y2="17"/>
                   </svg>
-                  License
+                  Download License Certificate
+                </button>
+
+                {/* Invoice */}
+                <button className="sd-btn sd-btn--ghost sd-btn--full" onClick={() => downloadInvoice(selected, session)}
+                  style={{ justifyContent: "flex-start", gap: 10 }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="9" y1="9" x2="15" y2="9"/>
+                    <line x1="9" y1="13" x2="15" y2="13"/>
+                    <line x1="9" y1="17" x2="12" y2="17"/>
+                  </svg>
+                  Download Invoice
+                </button>
+
+                {/* Project files — only if delivered and files exist */}
+                {selDelivered && selProj?.projectFiles?.length > 0 && selProj.projectFiles.map((f, i) => (
+                  <a key={i} href={f.url} target="_blank" rel="noopener noreferrer"
+                    className="sd-btn sd-btn--primary sd-btn--full"
+                    style={{ justifyContent: "flex-start", gap: 10, textDecoration: "none" }}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                      <polyline points="7 10 12 15 17 10"/>
+                      <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    {f.label || "Download Project Files"}
+                  </a>
+                ))}
+
+                {/* Grid view shortcut */}
+                <button className="sd-btn sd-btn--ghost sd-btn--full"
+                  onClick={() => { setSelected(null); setViewMode("grid"); setFilter("all"); }}
+                  style={{ justifyContent: "flex-start", gap: 10 }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+                    <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+                  </svg>
+                  View All Downloads
                 </button>
               </div>
-            )}
-            {selected.status === "pending" && (
-              <div className="sd-alert sd-alert--warn" style={{ marginTop: 16 }}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-                </svg>
-                Your order is being processed. WhatsApp us at +91-8264796534 for updates.
-              </div>
-            )}
+
+              {/* Pending notice */}
+              {!selDelivered && selected.status !== "cancelled" && (
+                <div className="sd-alert sd-alert--warn" style={{ marginTop: 16 }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                  </svg>
+                  Your order is {STATUS_LABELS[selected.status] || selected.status}. Project files will be available once delivered. WhatsApp: +91-8264796534
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </StudentLayout>
   );
 }

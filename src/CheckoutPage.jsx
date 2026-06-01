@@ -1,8 +1,23 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useCart } from "./CartContext";
-import { addOrder, getSettings } from "./admin/adminStore";
+import { addOrder } from "./admin/adminStore";
+import { createOrderApi, getProjectsApi, validateCouponAnywhere } from "./student/StudentApi";
 import "./CheckoutPage.css";
+
+const RAZORPAY_KEY = import.meta.env.VITE_RAZORPAY_KEY_ID || "rzp_test_REPLACE_WITH_YOUR_KEY";
+
+// ─── Load Razorpay script dynamically ────────────────────────────────────────
+function loadRazorpay() {
+  return new Promise((resolve) => {
+    if (window.Razorpay) { resolve(true); return; }
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload  = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+}
 
 // ─── Field ────────────────────────────────────────────────────────────────────
 function Field({ label, id, type = "text", placeholder, value, onChange, error, required, children }) {
@@ -21,19 +36,29 @@ function Field({ label, id, type = "text", placeholder, value, onChange, error, 
 }
 
 // ─── Order Summary ────────────────────────────────────────────────────────────
-function CheckoutSummary({ cart, total, coupon, setCoupon, couponApplied, setCouponApplied, finalTotal }) {
-  const [couponError, setCouponError] = useState("");
-  const settings = getSettings();
-  const savings = cart.reduce((s, i) => s + (i.originalPrice - i.price), 0);
-  const couponSaving = couponApplied ? Math.round(total * (settings.couponDiscount / 100)) : 0;
+function CheckoutSummary({ cart, total, coupon, setCoupon, couponApplied, setCouponApplied, couponData, setCouponData, finalTotal }) {
+  const [couponError,   setCouponError]   = useState("");
+  const [couponLoading, setCouponLoading] = useState(false);
 
-  const applyCoupon = () => {
-    if (coupon.trim().toUpperCase() === settings.couponCode.toUpperCase()) {
-      setCouponApplied(true); setCouponError("");
+  const savings      = cart.reduce((s, i) => s + ((i.originalPrice || i.price) - i.price), 0);
+  const couponSaving = couponApplied && couponData ? couponData.discount : 0;
+
+  const applyCoupon = async () => {
+    if (!coupon.trim()) { setCouponError("Please enter a coupon code."); return; }
+    setCouponLoading(true);
+    setCouponError("");
+    const result = await validateCouponAnywhere(coupon.trim(), total);
+    setCouponLoading(false);
+    if (result.valid) {
+      setCouponApplied(true); setCouponData(result); setCouponError("");
     } else {
-      setCouponError(`Invalid code. Try ${settings.couponCode}`);
-      setCouponApplied(false);
+      setCouponError(result.error || "Invalid coupon code.");
+      setCouponApplied(false); setCouponData(null);
     }
+  };
+
+  const removeCoupon = () => {
+    setCouponApplied(false); setCouponData(null); setCoupon(""); setCouponError("");
   };
 
   return (
@@ -44,8 +69,8 @@ function CheckoutSummary({ cart, total, coupon, setCoupon, couponApplied, setCou
         {cart.map((item) => (
           <div key={item.id} className="ck-summary__item">
             <div className="ck-summary__item-thumb">
-              {item.screenshots?.[0]
-                ? <img src={item.screenshots[0]} alt={item.title} />
+              {(item.thumbnail || item.screenshots?.[0])
+                ? <img src={item.thumbnail || item.screenshots[0]} alt={item.title} />
                 : <div className="ck-summary__item-placeholder">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                       <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
@@ -69,21 +94,24 @@ function CheckoutSummary({ cart, total, coupon, setCoupon, couponApplied, setCou
       {/* Coupon */}
       <div className="ck-coupon">
         <span className="ck-coupon__label">Have a coupon?</span>
-        {couponApplied ? (
+        {couponApplied && couponData ? (
           <div className="ck-coupon__applied">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-            {settings.couponCode} applied — {settings.couponDiscount}% extra off!
-            <button className="ck-coupon__remove" onClick={() => { setCouponApplied(false); setCoupon(""); }}>
+            {couponData.coupon?.code || coupon.toUpperCase()} applied — saving ₹{couponData.discount.toLocaleString("en-IN")}!
+            <button className="ck-coupon__remove" onClick={removeCoupon}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
           </div>
         ) : (
           <>
             <div className="ck-coupon__row">
-              <input type="text" placeholder={`e.g. ${settings.couponCode}`} value={coupon}
-                onChange={(e) => { setCoupon(e.target.value); setCouponError(""); }}
-                className={`ck-coupon__input${couponError ? " ck-coupon__input--error" : ""}`} />
-              <button className="ck-btn ck-btn--outline ck-btn--sm" onClick={applyCoupon} type="button">Apply</button>
+              <input type="text" placeholder="Enter coupon code" value={coupon}
+                onChange={(e) => { setCoupon(e.target.value.toUpperCase()); setCouponError(""); }}
+                className={`ck-coupon__input${couponError ? " ck-coupon__input--error" : ""}`}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); applyCoupon(); } }} />
+              <button className="ck-btn ck-btn--outline ck-btn--sm" onClick={applyCoupon} type="button" disabled={couponLoading}>
+                {couponLoading ? "..." : "Apply"}
+              </button>
             </div>
             {couponError && <p className="ck-coupon__error">{couponError}</p>}
           </>
@@ -96,15 +124,17 @@ function CheckoutSummary({ cart, total, coupon, setCoupon, couponApplied, setCou
       <div className="ck-totals">
         <div className="ck-total-row">
           <span>Subtotal</span>
-          <span>₹{cart.reduce((s, i) => s + i.originalPrice, 0).toLocaleString("en-IN")}</span>
+          <span>₹{cart.reduce((s, i) => s + (i.originalPrice || i.price), 0).toLocaleString("en-IN")}</span>
         </div>
-        <div className="ck-total-row ck-total-row--green">
-          <span>Project discount</span>
-          <span>−₹{savings.toLocaleString("en-IN")}</span>
-        </div>
-        {couponApplied && (
+        {savings > 0 && (
           <div className="ck-total-row ck-total-row--green">
-            <span>Coupon ({settings.couponCode})</span>
+            <span>Project discount</span>
+            <span>−₹{savings.toLocaleString("en-IN")}</span>
+          </div>
+        )}
+        {couponApplied && couponData && (
+          <div className="ck-total-row ck-total-row--green">
+            <span>Coupon ({couponData.coupon?.code || coupon.toUpperCase()})</span>
             <span>−₹{couponSaving.toLocaleString("en-IN")}</span>
           </div>
         )}
@@ -115,10 +145,10 @@ function CheckoutSummary({ cart, total, coupon, setCoupon, couponApplied, setCou
         </div>
       </div>
 
-      {/* Trust */}
+      {/* Trust badges */}
       <div className="ck-trust">
         {[
-          { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>, text: "256-bit SSL encryption" },
+          { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>, text: "Secured by Razorpay" },
           { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>, text: "Instant delivery after payment" },
           { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>, text: "24/7 WhatsApp support" },
         ].map((t) => (
@@ -135,59 +165,143 @@ function CheckoutSummary({ cart, total, coupon, setCoupon, couponApplied, setCou
 export default function CheckoutPage() {
   const { cart, total, clearCart } = useCart();
   const navigate = useNavigate();
-  const settings = getSettings();
 
-  const [coupon, setCoupon] = useState("");
+  const [coupon,        setCoupon]        = useState("");
   const [couponApplied, setCouponApplied] = useState(false);
-  const [step, setStep] = useState("form");
-  const [payMethod, setPayMethod] = useState("upi");
-  const [orderId, setOrderId] = useState("");
+  const [couponData,    setCouponData]    = useState(null);
+  const [step,          setStep]          = useState("form");
+  const [orderId,       setOrderId]       = useState("");
+  const [submitting,    setSubmitting]    = useState(false);
+  const [submitError,   setSubmitError]   = useState("");
 
-  const finalTotal = couponApplied
-    ? Math.round(total * (1 - settings.couponDiscount / 100))
+  const finalTotal = couponApplied && couponData
+    ? Math.max(0, total - couponData.discount)
     : total;
 
-  const [form, setForm] = useState({ name: "", email: "", phone: "", college: "", year: "", upiId: "" });
+  const [form, setForm] = useState({ name: "", email: "", phone: "", college: "", year: "" });
   const [errors, setErrors] = useState({});
-
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
   const validate = () => {
     const e = {};
-    if (!form.name.trim()) e.name = "Full name is required";
+    if (!form.name.trim())  e.name  = "Full name is required";
     if (!form.email.trim() || !/\S+@\S+\.\S+/.test(form.email)) e.email = "Valid email is required";
     if (!form.phone.trim() || !/^\d{10}$/.test(form.phone.replace(/\s/g, ""))) e.phone = "Valid 10-digit phone required";
-    if (payMethod === "upi" && !form.upiId.trim()) e.upiId = "UPI transaction ID is required";
     return e;
   };
 
-  const handleSubmit = (e) => {
+  // ── Create order in backend after successful Razorpay payment ──────────────
+  const createBackendOrder = async (razorpayPaymentId) => {
+    const studentToken = localStorage.getItem("wx_access");
+    let lastOrderId = "";
+
+    if (studentToken) {
+      let projectList = [];
+      try { projectList = await getProjectsApi(); } catch {}
+
+      for (const item of cart) {
+        const proj = projectList.find(
+          (p) => p.title === item.title || String(p.id) === String(item.id)
+        );
+        const order = await createOrderApi({
+          projectId:      proj?.id || null,
+          projectTitle:   item.title,
+          totalAmount:    item.originalPrice || item.price,
+          finalAmount:    item.price,
+          discountAmount: Math.max(0, (item.originalPrice || item.price) - item.price),
+          couponCode:     couponApplied && couponData ? (couponData.coupon?.code || coupon.toUpperCase()) : "",
+          notes:          `Razorpay Payment ID: ${razorpayPaymentId} | Phone: ${form.phone} | College: ${form.college || "—"}`,
+        });
+        lastOrderId = String(order.id);
+      }
+    } else {
+      for (const item of cart) {
+        const order = addOrder({
+          customer:   form.name,
+          email:      form.email,
+          phone:      form.phone,
+          college:    form.college || "",
+          project:    item.title,
+          amount:     item.price,
+          payMethod:  "razorpay",
+          couponUsed: couponApplied && couponData ? (couponData.coupon?.code || coupon.toUpperCase()) : null,
+        });
+        lastOrderId = order.id;
+      }
+    }
+    return lastOrderId;
+  };
+
+  // ── Handle form submit → open Razorpay ────────────────────────────────────
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const errs = validate();
     if (Object.keys(errs).length) { setErrors(errs); return; }
 
-    // Save each cart item as a separate order in adminStore
-    let lastOrderId = "";
-    cart.forEach((item) => {
-      const order = addOrder({
-        customer: form.name,
-        email: form.email,
-        phone: form.phone,
-        college: form.college || "",
-        project: item.title,
-        amount: item.price,
-        payMethod,
-        couponUsed: couponApplied ? settings.couponCode : null,
-      });
-      lastOrderId = order.id;
-    });
+    setSubmitting(true);
+    setSubmitError("");
 
-    setOrderId(lastOrderId);
-    clearCart();
-    setStep("success");
+    const loaded = await loadRazorpay();
+    if (!loaded) {
+      setSubmitError("Failed to load Razorpay. Please check your internet connection.");
+      setSubmitting(false);
+      return;
+    }
+
+    // Amount in paise (Razorpay requires smallest currency unit)
+    const amountPaise = Math.round(finalTotal * 100);
+
+    const options = {
+      key:         RAZORPAY_KEY,
+      amount:      amountPaise,
+      currency:    "INR",
+      name:        "Webxter",
+      description: cart.map((i) => i.title).join(", "),
+      image:       "https://www.webxter.in/favicon-extra-space.svg",
+      prefill: {
+        name:    form.name,
+        email:   form.email,
+        contact: form.phone,
+      },
+      notes: {
+        college:    form.college || "",
+        year:       form.year    || "",
+        coupon:     couponApplied && couponData ? (couponData.coupon?.code || coupon) : "",
+        projects:   cart.map((i) => i.title).join(", "),
+      },
+      theme: { color: "#009fd4" },
+
+      handler: async (response) => {
+        // Payment successful — create order in backend
+        try {
+          const oid = await createBackendOrder(response.razorpay_payment_id);
+          setOrderId(oid || response.razorpay_payment_id);
+          clearCart();
+          setStep("success");
+        } catch (err) {
+          setSubmitError("Payment received but order creation failed. Contact support with Payment ID: " + response.razorpay_payment_id);
+        } finally {
+          setSubmitting(false);
+        }
+      },
+
+      modal: {
+        ondismiss: () => {
+          setSubmitting(false);
+          setSubmitError("Payment was cancelled. Please try again.");
+        },
+      },
+    };
+
+    const rzp = new window.Razorpay(options);
+    rzp.on("payment.failed", (response) => {
+      setSubmitting(false);
+      setSubmitError(`Payment failed: ${response.error.description}`);
+    });
+    rzp.open();
   };
 
-  // Empty cart guard
+  // ── Empty cart guard ───────────────────────────────────────────────────────
   if (cart.length === 0 && step !== "success") {
     return (
       <div className="ck-empty-state">
@@ -204,7 +318,7 @@ export default function CheckoutPage() {
     );
   }
 
-  // Success screen
+  // ── Success screen ─────────────────────────────────────────────────────────
   if (step === "success") {
     return (
       <div className="ck-success">
@@ -214,16 +328,16 @@ export default function CheckoutPage() {
             <polyline points="22 4 12 14.01 9 11.01"/>
           </svg>
         </div>
-        <h1 className="ck-success__title">Order Placed!</h1>
+        <h1 className="ck-success__title">Payment Successful!</h1>
         {orderId && <div className="ck-success__order-id">Order ID: <strong>{orderId}</strong></div>}
         <p className="ck-success__sub">
-          Thank you, <strong>{form.name}</strong>! Your order has been received.<br />
+          Thank you, <strong>{form.name}</strong>! Your payment was received.<br />
           We'll send the project files to <strong>{form.email}</strong> within your delivery window.
         </p>
         <div className="ck-success__steps">
           {[
-            { n: "1", label: "Order confirmed", done: true },
-            { n: "2", label: "Payment verification", done: payMethod !== "upi" },
+            { n: "1", label: "Payment confirmed",       done: true  },
+            { n: "2", label: "Order being processed",   done: false },
             { n: "3", label: "Files delivered to email", done: false },
           ].map((s) => (
             <div key={s.n} className={`ck-success__step ${s.done ? "ck-success__step--done" : ""}`}>
@@ -233,8 +347,8 @@ export default function CheckoutPage() {
           ))}
         </div>
         <div className="ck-success__actions">
-          <Link to="/" className="ck-btn ck-btn--primary ck-btn--lg">Browse More Projects</Link>
-          <a href="https://webxter.in/contact" className="ck-btn ck-btn--ghost ck-btn--lg">Contact Support</a>
+          <Link to="/student/orders" className="ck-btn ck-btn--primary ck-btn--lg">View My Orders</Link>
+          <Link to="/" className="ck-btn ck-btn--ghost ck-btn--lg">Browse More Projects</Link>
         </div>
         <p className="ck-success__note">
           Questions? WhatsApp: <strong>+91-8264796534</strong> · Email: <strong>projects@webxter.in</strong>
@@ -243,10 +357,10 @@ export default function CheckoutPage() {
     );
   }
 
+  // ── Checkout form ──────────────────────────────────────────────────────────
   return (
     <div className="ck-page">
       <div className="ck-container">
-        {/* Header + steps */}
         <div className="ck-header">
           <h1 className="ck-header__title">Checkout</h1>
           <nav className="ck-steps" aria-label="Checkout steps">
@@ -259,7 +373,6 @@ export default function CheckoutPage() {
         </div>
 
         <div className="ck-layout">
-          {/* ── Left: Form ── */}
           <form className="ck-form" onSubmit={handleSubmit} noValidate>
 
             {/* Section 1 — Contact */}
@@ -296,70 +409,69 @@ export default function CheckoutPage() {
             {/* Section 3 — Payment */}
             <div className="ck-section">
               <h2 className="ck-section__title">
-                <span className="ck-section__num">3</span>Payment Method
+                <span className="ck-section__num">3</span>Payment
               </h2>
 
-              <div className="ck-pay-methods">
-                {[
-                  { id: "upi", label: "UPI / GPay / PhonePe",
-                    icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg> },
-                  { id: "whatsapp", label: "Pay via WhatsApp",
-                    icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> },
-                  { id: "bank", label: "Bank Transfer / NEFT",
-                    icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg> },
-                ].map((m) => (
-                  <label key={m.id} className={`ck-pay-method${payMethod === m.id ? " ck-pay-method--active" : ""}`}>
-                    <input type="radio" name="payMethod" value={m.id} checked={payMethod === m.id} onChange={() => setPayMethod(m.id)} />
-                    <span className="ck-pay-method__icon">{m.icon}</span>
-                    <span className="ck-pay-method__label">{m.label}</span>
-                    {payMethod === m.id && (
-                      <span className="ck-pay-method__check">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                      </span>
-                    )}
-                  </label>
-                ))}
+              {/* Razorpay info card */}
+              <div style={{
+                display: "flex", alignItems: "center", gap: 16,
+                background: "linear-gradient(135deg, #f0faff, #fdf0ff)",
+                border: "1.5px solid rgba(0,159,212,.25)",
+                borderRadius: 14, padding: "18px 20px",
+              }}>
+                <div style={{
+                  width: 48, height: 48, borderRadius: 12, flexShrink: 0,
+                  background: "#072654", display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  {/* Razorpay logo mark */}
+                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="#00BAF2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </div>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: ".95rem", color: "#0f172a" }}>Pay securely with Razorpay</div>
+                  <div style={{ fontSize: ".8rem", color: "#64748b", marginTop: 2 }}>
+                    UPI · Cards · Net Banking · Wallets — all in one click
+                  </div>
+                </div>
+                <div style={{ marginLeft: "auto", display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  {["UPI", "Visa", "MC", "NB"].map((m) => (
+                    <span key={m} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 6, padding: "3px 8px", fontSize: ".68rem", fontWeight: 700, color: "#334155" }}>{m}</span>
+                  ))}
+                </div>
               </div>
 
-              {payMethod === "upi" && (
-                <div className="ck-pay-detail">
-                  <div className="ck-upi-box">
-                    <div className="ck-upi-box__label">Send payment to UPI ID</div>
-                    <div className="ck-upi-box__id">webxter@upi</div>
-                    <div className="ck-upi-box__note">After payment, enter your transaction ID below</div>
-                  </div>
-                  <Field label="UPI Transaction ID" id="upiId" placeholder="e.g. 123456789012" value={form.upiId} onChange={set("upiId")} error={errors.upiId} required />
-                </div>
-              )}
-
-              {payMethod === "whatsapp" && (
-                <div className="ck-info-box">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                  After placing the order, our team will contact you on WhatsApp at <strong>+91-8264796534</strong> to complete the payment.
-                </div>
-              )}
-
-              {payMethod === "bank" && (
-                <div className="ck-info-box">
-                  <div className="ck-bank-table">
-                    {[["Account Name","Webxter Solutions"],["Account No.","XXXX XXXX XXXX"],["IFSC","XXXXXXXX"],["Bank","HDFC Bank"]].map(([k,v]) => (
-                      <div key={k} className="ck-bank-table__row">
-                        <span>{k}</span><strong>{v}</strong>
-                      </div>
-                    ))}
-                  </div>
-                  <p style={{ marginTop: 10, fontSize: ".8rem", color: "#64748b" }}>Share the transfer screenshot on WhatsApp after payment.</p>
-                </div>
-              )}
+              <p style={{ fontSize: ".78rem", color: "#94a3b8", marginTop: 10, display: "flex", alignItems: "center", gap: 6 }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                Your payment is 100% secure. We never store card details.
+              </p>
             </div>
 
+            {/* Error */}
+            {submitError && (
+              <div style={{ background: "rgba(239,68,68,.08)", border: "1px solid rgba(239,68,68,.2)", borderRadius: 10, padding: "12px 16px", color: "#dc2626", fontSize: ".875rem", marginBottom: 16, display: "flex", gap: 8, alignItems: "flex-start" }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                {submitError}
+              </div>
+            )}
+
             {/* Submit */}
-            <button type="submit" className="ck-submit-btn">
-              Place Order — ₹{finalTotal.toLocaleString("en-IN")}
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
-              </svg>
+            <button type="submit" className="ck-submit-btn" disabled={submitting}>
+              {submitting ? (
+                <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ width: 18, height: 18, borderRadius: "50%", border: "2px solid rgba(255,255,255,.3)", borderTopColor: "#fff", animation: "ck-spin .7s linear infinite", display: "inline-block" }} />
+                  Opening Razorpay…
+                </span>
+              ) : (
+                <>
+                  Pay ₹{finalTotal.toLocaleString("en-IN")} with Razorpay
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                  </svg>
+                </>
+              )}
             </button>
+            <style>{`@keyframes ck-spin { to { transform: rotate(360deg); } }`}</style>
 
             <p className="ck-terms">
               By placing this order you agree to our{" "}
@@ -368,11 +480,11 @@ export default function CheckoutPage() {
             </p>
           </form>
 
-          {/* ── Right: Summary ── */}
           <CheckoutSummary
             cart={cart} total={total}
             coupon={coupon} setCoupon={setCoupon}
             couponApplied={couponApplied} setCouponApplied={setCouponApplied}
+            couponData={couponData} setCouponData={setCouponData}
             finalTotal={finalTotal}
           />
         </div>

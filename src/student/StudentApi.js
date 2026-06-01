@@ -383,10 +383,110 @@ export async function changePasswordApi(oldPassword, newPassword) {
 // ─── Orders endpoints ─────────────────────────────────────────────────────────
 
 /**
- * List the current student's orders.
- * GET /api/v1/orders/
- * Handles both plain array and DRF paginated { count, results: [] } responses.
+ * Create a new order for the logged-in student.
+ * POST /api/v1/orders/
  */
+export async function createOrderApi({ projectId, projectTitle, totalAmount, finalAmount, discountAmount, couponCode, notes }) {
+  const payload = {
+    total_amount:    Number(totalAmount)    || 0,
+    final_amount:    Number(finalAmount)    || 0,
+    discount_amount: Number(discountAmount) || 0,
+    notes:           notes || "",
+  };
+
+  // project field — send ID if available, otherwise omit (backend may accept title via notes)
+  if (projectId) payload.project = projectId;
+
+  // coupon_code — omit entirely if empty (backend rejects null)
+  if (couponCode) payload.coupon_code = couponCode;
+
+  const res = await authFetch(`${BASE}/api/v1/orders/`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+  const contentType = res.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    throw new Error(`Server error (${res.status}) creating order.`);
+  }
+  const data = await res.json();
+  if (!res.ok) throw new Error(extractError(data));
+  return data;
+}
+/**
+ * Validate a coupon code — works for both logged-in students and guests.
+ * Priority:
+ *  1. Admin token → live backend coupons
+ *  2. Cached coupon list in localStorage (seeded on app load)
+ *  3. adminStore.validateCoupon (localStorage fallback)
+ */
+export async function validateCouponAnywhere(code, orderTotal) {
+  const BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+  const adminToken = localStorage.getItem("wx_admin_access");
+
+  // 1. Try backend with admin token
+  if (adminToken) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/v1/admin/coupons/`, {
+        headers: { Authorization: `Bearer ${adminToken}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const list = Array.isArray(data) ? data : (data.results || []);
+        localStorage.setItem("wx_cached_coupons", JSON.stringify(list));
+        localStorage.setItem("wx_cached_coupons_ts", String(Date.now()));
+        return _matchCoupon(list, code, orderTotal);
+      }
+    } catch { /* fall through */ }
+  }
+
+  // 2. Try cached coupon list (seeded in main.jsx on every page load)
+  try {
+    const cached = localStorage.getItem("wx_cached_coupons");
+    if (cached) {
+      const list = JSON.parse(cached);
+      if (Array.isArray(list) && list.length > 0) {
+        return _matchCoupon(list, code, orderTotal);
+      }
+    }
+  } catch { /* fall through */ }
+
+  // 3. adminStore localStorage fallback
+  try {
+    const { validateCoupon: validateLocal } = await import("../admin/adminStore");
+    const result = validateLocal(code, orderTotal);
+    if (result.valid) return { valid: true, discount: result.discount, coupon: result.coupon };
+    return { valid: false, error: result.error || "Invalid coupon code." };
+  } catch {
+    return { valid: false, error: "Invalid coupon code." };
+  }
+}
+
+function _matchCoupon(list, code, orderTotal) {
+  const coupon = list.find((c) => (c.code || "").toUpperCase() === code.toUpperCase().trim());
+  if (!coupon) return { valid: false, error: "Coupon not found." };
+  if (!coupon.is_active) return { valid: false, error: "This coupon is no longer active." };
+
+  const now = new Date();
+  if (coupon.valid_until && new Date(coupon.valid_until) < now)
+    return { valid: false, error: "This coupon has expired." };
+  if (coupon.valid_from && new Date(coupon.valid_from) > now)
+    return { valid: false, error: "This coupon is not yet active." };
+  if (coupon.is_exhausted || (coupon.max_uses && coupon.used_count >= coupon.max_uses))
+    return { valid: false, error: "This coupon has reached its usage limit." };
+
+  const minOrder = parseFloat(coupon.min_order_amount || 0);
+  if (minOrder > 0 && orderTotal < minOrder)
+    return { valid: false, error: `Minimum order of ₹${minOrder.toLocaleString("en-IN")} required.` };
+
+  const discountValue = parseFloat(coupon.discount_value || 0);
+  const discount = coupon.discount_type === "percentage"
+    ? Math.round(orderTotal * discountValue / 100)
+    : Math.min(discountValue, orderTotal);
+
+  return { valid: true, discount, coupon };
+}
+
 export async function getOrdersApi() {
   const res = await authFetch(`${BASE}/api/v1/orders/`);
   if (!res.ok) throw new Error("Failed to load orders");
