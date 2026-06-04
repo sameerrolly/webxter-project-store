@@ -198,12 +198,101 @@ const DEFAULT_PROJECTS = [
 ];
 
 const DEFAULT_ORDERS = [
-  { id: "ORD-001", customer: "Rahul Sharma", email: "rahul@example.com", phone: "9876543210", college: "IIT Delhi", project: "Library Management System", amount: 9999, status: "completed", payMethod: "upi", date: "2024-03-20" },
-  { id: "ORD-002", customer: "Priya Patel", email: "priya@example.com", phone: "9123456789", college: "NIT Surat", project: "Hospital Management System", amount: 14999, status: "pending", payMethod: "whatsapp", date: "2024-03-22" },
-  { id: "ORD-003", customer: "Amit Kumar", email: "amit@example.com", phone: "9988776655", college: "VIT Vellore", project: "AI ChatBot System", amount: 14999, status: "completed", payMethod: "bank", date: "2024-03-25" },
-  { id: "ORD-004", customer: "Sneha Reddy", email: "sneha@example.com", phone: "9871234560", college: "BITS Pilani", project: "Stock Price Prediction", amount: 16999, status: "completed", payMethod: "upi", date: "2024-04-01" },
-  { id: "ORD-005", customer: "Karan Singh", email: "karan@example.com", phone: "9765432100", college: "DTU Delhi", project: "Expense Tracker App", amount: 7499, status: "cancelled", payMethod: "upi", date: "2024-04-03" },
-  { id: "ORD-006", customer: "Meera Nair", email: "meera@example.com", phone: "9654321098", college: "NSIT Delhi", project: "Code Collaboration Platform", amount: 14999, status: "completed", payMethod: "upi", date: "2024-04-05" },
+  {
+    id: "DEMO-001",
+    customer_name: "Rahul Sharma",
+    client_name: "Rahul Sharma",
+    email: "rahul@example.com",
+    client_email: "rahul@example.com",
+    phone: "9876543210",
+    college: "IIT Delhi",
+    project_title: "Library Management System",
+    project: "Library Management System",
+    final_amount: 9999,
+    total_amount: 12499,
+    discount_amount: 2500,
+    status: "delivered",
+    pay_method: "razorpay",
+    notes: "Razorpay Payment ID: pay_demo001 | Phone: 9876543210 | College: IIT Delhi",
+    created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    _isDemo: true,
+  },
+  {
+    id: "DEMO-002",
+    customer_name: "Priya Patel",
+    client_name: "Priya Patel",
+    email: "priya@example.com",
+    client_email: "priya@example.com",
+    phone: "9123456789",
+    college: "NIT Surat",
+    project_title: "Hospital Management System",
+    project: "Hospital Management System",
+    final_amount: 14999,
+    total_amount: 14999,
+    discount_amount: 0,
+    status: "delivered",
+    pay_method: "razorpay",
+    notes: "Razorpay Payment ID: pay_demo002 | Phone: 9123456789 | College: NIT Surat",
+    created_at: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString(),
+    _isDemo: true,
+  },
+  {
+    id: "DEMO-003",
+    customer_name: "Amit Kumar",
+    client_name: "Amit Kumar",
+    email: "amit@example.com",
+    client_email: "amit@example.com",
+    phone: "9988776655",
+    college: "VIT Vellore",
+    project_title: "AI ChatBot System",
+    project: "AI ChatBot System",
+    final_amount: 11999,
+    total_amount: 14999,
+    discount_amount: 3000,
+    status: "delivered",
+    pay_method: "razorpay",
+    notes: "Razorpay Payment ID: pay_demo003 | Phone: 9988776655 | College: VIT Vellore",
+    created_at: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
+    _isDemo: true,
+  },
+  {
+    id: "DEMO-004",
+    customer_name: "Sneha Reddy",
+    client_name: "Sneha Reddy",
+    email: "sneha@example.com",
+    client_email: "sneha@example.com",
+    phone: "9871234560",
+    college: "BITS Pilani",
+    project_title: "Stock Price Prediction",
+    project: "Stock Price Prediction",
+    final_amount: 16999,
+    total_amount: 16999,
+    discount_amount: 0,
+    status: "in_progress",
+    pay_method: "razorpay",
+    notes: "Razorpay Payment ID: pay_demo004 | Phone: 9871234560 | College: BITS Pilani",
+    created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+    _isDemo: true,
+  },
+  {
+    id: "DEMO-005",
+    customer_name: "Karan Singh",
+    client_name: "Karan Singh",
+    email: "karan@example.com",
+    client_email: "karan@example.com",
+    phone: "9765432100",
+    college: "DTU Delhi",
+    project_title: "Expense Tracker App",
+    project: "Expense Tracker App",
+    final_amount: 7499,
+    total_amount: 9999,
+    discount_amount: 2500,
+    status: "pending",
+    pay_method: "razorpay",
+    notes: "Razorpay Payment ID: pay_demo005 | Phone: 9765432100 | College: DTU Delhi",
+    created_at: new Date().toISOString(),
+    _isDemo: true,
+  },
 ];
 
 const DEFAULT_SETTINGS = {
@@ -215,6 +304,7 @@ const DEFAULT_SETTINGS = {
   couponCode: "STUDENT20",
   couponDiscount: 20,
   maintenanceMode: false,
+  maintenanceMessage: "We're currently under maintenance. We'll be back shortly. For urgent queries, contact us on WhatsApp.",
   showMarquee: true,
   marqueeText: "20% OFF for Final Year Students!",
 };
@@ -291,7 +381,19 @@ export function deleteProject(id) {
 export function getOrders() {
   try {
     const raw = localStorage.getItem(KEYS.ORDERS);
-    return raw ? JSON.parse(raw) : DEFAULT_ORDERS;
+    if (!raw) return DEFAULT_ORDERS;
+    const stored = JSON.parse(raw);
+    // Wipe any old fake dataset (old 6-row set OR old single DEMO-001)
+    const isOldFake =
+      (Array.isArray(stored) && stored.some((o) =>
+        (o.id === "ORD-001" && o.customer === "Rahul Sharma") ||
+        (o.id === "DEMO-001" && o.customer === "Demo Student")
+      ));
+    if (isOldFake) {
+      localStorage.removeItem(KEYS.ORDERS);
+      return DEFAULT_ORDERS;
+    }
+    return stored;
   } catch { return DEFAULT_ORDERS; }
 }
 
@@ -429,44 +531,50 @@ export function incrementCouponUsage(code) {
   saveCoupons(coupons);
 }
 export function getAnalytics() {
-  const orders = getOrders();
+  const orders = getOrders().filter((o) => !o._isDemo);
   const projects = getProjects();
 
-  const totalRevenue = orders.filter((o) => o.status === "completed").reduce((s, o) => s + o.amount, 0);
+  const paidStatuses = ["completed", "delivered"];
+  const totalRevenue = orders
+    .filter((o) => paidStatuses.includes(o.status))
+    .reduce((s, o) => s + (parseFloat(o.final_amount ?? o.total_amount ?? o.amount ?? 0) || 0), 0);
   const totalOrders = orders.length;
-  const completedOrders = orders.filter((o) => o.status === "completed").length;
+  const completedOrders = orders.filter((o) => paidStatuses.includes(o.status)).length;
   const pendingOrders = orders.filter((o) => o.status === "pending").length;
   const cancelledOrders = orders.filter((o) => o.status === "cancelled").length;
   const activeProjects = projects.filter((p) => p.active).length;
 
-  // revenue by month (last 6 months)
+  // revenue by month (last 6 months) — paid orders only
   const now = new Date();
   const monthlyRevenue = Array.from({ length: 6 }, (_, i) => {
     const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
     const label = d.toLocaleString("default", { month: "short" });
     const revenue = orders
       .filter((o) => {
-        if (o.status !== "completed") return false;
-        const od = new Date(o.date);
+        if (!paidStatuses.includes(o.status)) return false;
+        const od = new Date(o.date ?? o.created_at ?? 0);
         return od.getMonth() === d.getMonth() && od.getFullYear() === d.getFullYear();
       })
-      .reduce((s, o) => s + o.amount, 0);
+      .reduce((s, o) => s + (parseFloat(o.final_amount ?? o.total_amount ?? o.amount ?? 0) || 0), 0);
     return { label, revenue };
   });
 
-  // top projects by order count
   const projectOrderCount = {};
   orders.forEach((o) => {
-    projectOrderCount[o.project] = (projectOrderCount[o.project] || 0) + 1;
+    const name = o.project_title ?? o.project ?? "Unknown";
+    projectOrderCount[name] = (projectOrderCount[name] || 0) + 1;
   });
   const topProjects = Object.entries(projectOrderCount)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
     .map(([name, count]) => ({ name, count }));
 
-  // payment method breakdown
-  const payBreakdown = { upi: 0, whatsapp: 0, bank: 0 };
-  orders.forEach((o) => { if (payBreakdown[o.payMethod] !== undefined) payBreakdown[o.payMethod]++; });
+  const payBreakdown = { razorpay: 0, upi: 0, whatsapp: 0, bank: 0, other: 0 };
+  orders.filter((o) => paidStatuses.includes(o.status)).forEach((o) => {
+    const m = (o.pay_method ?? o.payMethod ?? "razorpay").toLowerCase();
+    if (m in payBreakdown) payBreakdown[m]++;
+    else payBreakdown.other++;
+  });
 
   return {
     totalRevenue, totalOrders, completedOrders, pendingOrders, cancelledOrders,

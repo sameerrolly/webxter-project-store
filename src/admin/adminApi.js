@@ -168,15 +168,15 @@ export function isAdminApiLoggedIn() {
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 /**
- * GET /api/v1/admin/dashboard/
+ * GET /api/v1/admin/dashboard/?range=1W|1M|3M|6M|1Y
  * Returns: { total_revenue, total_orders, completed_orders, pending_orders,
  *            cancelled_orders, active_projects, conversion_rate,
- *            monthly_revenue: [{label, revenue}],
- *            top_projects: [{name, count}],
- *            pay_breakdown: {upi, whatsapp, bank} }
+ *            revenue_series: [{label, revenue, orders}],
+ *            top_projects: [{name, count, revenue}],
+ *            pay_breakdown: {razorpay, upi, whatsapp, bank, other} }
  */
-export async function fetchAdminDashboard() {
-  const res = await api.get("/admin/dashboard/");
+export async function fetchAdminDashboard(range = "1M") {
+  const res = await api.get("/admin/dashboard/", { params: { range } });
   return res.data;
 }
 

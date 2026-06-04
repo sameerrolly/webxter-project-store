@@ -23,12 +23,19 @@ const SEED_COUPONS = [{"id":12,"code":"STUDENT20","description":"20% student","d
   } catch {}
 })();
 
-// Refresh coupon cache from backend in the background (uses admin token if present)
+// Refresh coupon cache from backend in the background
+// Works for both logged-in admins (full list) and guests (public endpoint fallback)
 (function refreshCouponCache() {
   const BASE  = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
   const token = localStorage.getItem("wx_admin_access");
-  if (!token) return; // only refresh when admin is logged in
-  fetch(`${BASE}/api/v1/admin/coupons/`, { headers: { Authorization: `Bearer ${token}` } })
+
+  // Try admin endpoint first (full list), fall back to public endpoint
+  const url     = token
+    ? `${BASE}/api/v1/admin/coupons/`
+    : `${BASE}/api/v1/coupons/`;
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+  fetch(url, { headers })
     .then((r) => r.ok ? r.json() : null)
     .then((data) => {
       if (!data) return;

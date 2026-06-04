@@ -2,6 +2,17 @@ import React, { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { studentLogoutApi, getStoredUser } from "./StudentApi";
 import { getStudentTickets } from "./studentStore";
+import {
+  getStudentNotifications,
+  getStudentUnreadCount,
+  markStudentRead,
+  markAllStudentRead,
+  clearStudentNotifications,
+  addStudentNotification,
+  relativeTime,
+  NOTIF_META,
+  seedDemoNotifications,
+} from "../notificationStore";
 import "./student.css";
 
 const BASE = import.meta.env.VITE_API_URL;
@@ -307,6 +318,8 @@ export default function StudentLayout({ children, title }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [notifs, setNotifs] = useState([]);
+  const [unread, setUnread] = useState(0);
   const notifRef = useRef(null);
 
   // Re-read user on mount (covers the case where navigate happened before state settled)
@@ -320,22 +333,83 @@ export default function StudentLayout({ children, title }) {
     ? [session.first_name, session.last_name].filter(Boolean).join(" ") || session.email
     : "Student";
 
-  // Build notifications from open tickets only (orders come from API now)
-  const notifications = (() => {
-    const email = session?.email || "";
-    const tickets = getStudentTickets(email);
-    return tickets
+  // Merge stored notifs + open tickets into one unified list
+  const buildNotifs = (email) => {
+    if (!email) return [];
+    const stored = getStudentNotifications(email);
+    // Add open support tickets as notifs (deduplicated by id prefix)
+    const storedIds = new Set(stored.map((n) => n.id));
+    const tickets = getStudentTickets(email)
       .filter((t) => t.status === "open")
       .map((t) => ({
-        id: `tkt-${t.id}`, type: "ticket",
-        title: "Open Ticket", body: t.subject,
-        date: t.createdAt, link: "/student/support",
-      }));
-  })();
+        id: `tkt-${t.id}`,
+        type: "ticket",
+        title: "Open Support Ticket",
+        body: t.subject,
+        link: "/student/support",
+        read: false,
+        createdAt: t.createdAt,
+      }))
+      .filter((t) => !storedIds.has(t.id));
+    return [...stored, ...tickets].sort(
+      (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+    );
+  };
 
-  const unread = notifications.length;
+  const refreshNotifs = () => {
+    const email = getStoredUser()?.email || "";
+    const all = buildNotifs(email);
+    setNotifs(all);
+    setUnread(all.filter((n) => !n.read).length);
+  };
 
-  // Close dropdown on outside click
+  useEffect(() => {
+    refreshNotifs();
+  }, [session?.email]);
+
+  // Seed demo notifications for this student once on first login
+  useEffect(() => {
+    const email = session?.email || getStoredUser()?.email || "";
+    if (email) seedDemoNotifications(email);
+  }, [session?.email]);
+
+  // Listen for new notifications (fired by notificationStore)
+  useEffect(() => {
+    const handler = () => refreshNotifs();
+    window.addEventListener("wx-notif-student", handler);
+    const interval = setInterval(refreshNotifs, 10000);
+    return () => {
+      window.removeEventListener("wx-notif-student", handler);
+      clearInterval(interval);
+    };
+  }, []);
+
+  const handleOpenNotif = () => {
+    setNotifOpen((o) => !o);
+    refreshNotifs();
+  };
+
+  const handleNotifClick = (n) => {
+    const email = getStoredUser()?.email || "";
+    markStudentRead(email, n.id);
+    refreshNotifs();
+    setNotifOpen(false);
+    navigate(n.link || "/student/orders");
+  };
+
+  const handleMarkAll = () => {
+    const email = getStoredUser()?.email || "";
+    markAllStudentRead(email);
+    refreshNotifs();
+  };
+
+  const handleClearAll = () => {
+    const email = getStoredUser()?.email || "";
+    clearStudentNotifications(email);
+    refreshNotifs();
+  };
+
+  // Also close dropdown on outside click
   useEffect(() => {
     const handler = (e) => {
       if (notifRef.current && !notifRef.current.contains(e.target)) setNotifOpen(false);
@@ -470,7 +544,7 @@ export default function StudentLayout({ children, title }) {
             <div className="sd-notif" ref={notifRef}>
               <button
                 className={`sd-notif__btn${unread > 0 ? " sd-notif__btn--active" : ""}`}
-                onClick={() => setNotifOpen((o) => !o)}
+                onClick={handleOpenNotif}
                 aria-label={`Notifications${unread > 0 ? ` (${unread})` : ""}`}
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -485,8 +559,20 @@ export default function StudentLayout({ children, title }) {
                   <div className="sd-notif__header">
                     <span>Notifications</span>
                     {unread > 0 && <span className="sd-notif__count">{unread} new</span>}
+                    <div style={{ marginLeft: "auto", display: "flex", gap: 5 }}>
+                      {unread > 0 && (
+                        <button className="sd-notif__action-btn" onClick={handleMarkAll} title="Mark all read">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                        </button>
+                      )}
+                      {notifs.length > 0 && (
+                        <button className="sd-notif__action-btn" onClick={handleClearAll} title="Clear all">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  {notifications.length === 0 ? (
+                  {notifs.length === 0 ? (
                     <div className="sd-notif__empty">
                       <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
@@ -496,21 +582,37 @@ export default function StudentLayout({ children, title }) {
                     </div>
                   ) : (
                     <div className="sd-notif__list">
-                      {notifications.map((n) => (
-                        <Link
-                          key={n.id}
-                          to={n.link}
-                          className="sd-notif__item"
-                          onClick={() => setNotifOpen(false)}
-                        >
-                          <div className={`sd-notif__dot sd-notif__dot--${n.type}`} />
-                          <div className="sd-notif__text">
-                            <div className="sd-notif__item-title">{n.title}</div>
-                            <div className="sd-notif__item-body">{n.body}</div>
-                            <div className="sd-notif__item-date">{n.date}</div>
-                          </div>
-                        </Link>
-                      ))}
+                      {notifs.map((n) => {
+                        const meta = NOTIF_META[n.type] || NOTIF_META.system;
+                        return (
+                          <button
+                            key={n.id}
+                            className={`sd-notif__item${n.read ? "" : " sd-notif__item--unread"}`}
+                            onClick={() => handleNotifClick(n)}
+                          >
+                            <div className="sd-notif__item-dot" style={{ background: meta.bg, color: meta.color }}>
+                              {n.type === "order_placed" && (
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+                              )}
+                              {n.type === "order_status" && (
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                              )}
+                              {n.type === "ticket" && (
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                              )}
+                              {(n.type === "system" || !n.type) && (
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                              )}
+                            </div>
+                            <div className="sd-notif__text">
+                              <div className="sd-notif__item-title">{n.title}</div>
+                              <div className="sd-notif__item-body">{n.body}</div>
+                              <div className="sd-notif__item-date">{relativeTime(n.createdAt)}</div>
+                            </div>
+                            {!n.read && <div className="sd-notif__unread-dot" />}
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

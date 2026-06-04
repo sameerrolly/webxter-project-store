@@ -765,3 +765,111 @@ textarea.adm-field__input { resize: vertical; min-height: 90px; }
 .adm-student-mini-chip--more {
   background: #f1f5f9; color: #64748b;
 }
+
+/* ── Notification bell — extended (real data) ── */
+.adm-notif__btn { position: relative; }
+.adm-notif__badge {
+  position: absolute; top: -5px; right: -5px;
+  min-width: 17px; height: 17px; border-radius: 999px;
+  background: linear-gradient(45deg, #ef4444, #f97316);
+  color: #fff; font-size: .62rem; font-weight: 800;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0 4px; pointer-events: none; border: 2px solid #fff;
+}
+.adm-notif__header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 13px 16px 11px;
+  border-bottom: 1px solid #f1f5f9;
+}
+.adm-notif__header-title { font-size: .875rem; font-weight: 800; color: #0f172a; }
+.adm-notif__new {
+  font-size: .68rem; font-weight: 700;
+  background: linear-gradient(45deg, #009fd4, #ff6eff);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.adm-notif__action-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 6px;
+  background: none; border: 1px solid #e2e8f0;
+  cursor: pointer; color: #64748b; transition: all .15s;
+}
+.adm-notif__action-btn:hover { background: #f1f5f9; color: #0f172a; }
+
+/* Item */
+.adm-notif__item {
+  display: flex; align-items: flex-start; gap: 11px;
+  padding: 11px 14px; border: none; width: 100%;
+  background: none; cursor: pointer; text-align: left;
+  border-bottom: 1px solid #f8f9fb; transition: background .15s;
+}
+.adm-notif__item:last-child { border-bottom: none; }
+.adm-notif__item:hover { background: #f8f9fb; }
+.adm-notif__item--unread { background: rgba(0,159,212,.03); }
+.adm-notif__item--unread:hover { background: rgba(0,159,212,.06); }
+
+.adm-notif__item-dot {
+  width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  margin-top: 1px;
+}
+.adm-notif__item-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.adm-notif__item-title { font-size: .78rem; font-weight: 700; color: #0f172a; }
+.adm-notif__item-body {
+  font-size: .74rem; color: #64748b;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.adm-notif__item-time { font-size: .68rem; color: #94a3b8; margin-top: 2px; }
+
+.adm-notif__unread-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #009fd4; flex-shrink: 0; margin-top: 5px;
+}
+
+.adm-notif__list { max-height: 360px; overflow-y: auto; }
+.adm-notif__list::-webkit-scrollbar { width: 4px; }
+.adm-notif__list::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
+
+/* ── Bar chart — improved with hover tooltip ── */
+.adm-bar-chart__bar-wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.adm-bar-chart__bar {
+  position: relative;
+  width: 100%;
+  border-radius: 4px 4px 0 0;
+  background: linear-gradient(180deg, #009fd4, #ff6eff);
+  min-height: 2px;
+  transition: height .3s ease, transform .15s ease;
+}
+.adm-bar-chart__col:hover .adm-bar-chart__bar { transform: translateY(-2px); opacity: .9; }
+.adm-bar-chart__tooltip {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #0f172a;
+  color: #fff;
+  padding: 3px 7px;
+  border-radius: 5px;
+  font-size: .68rem;
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .2s;
+}
+.adm-bar-chart__col:hover .adm-bar-chart__tooltip { opacity: 1; }
+.adm-bar-chart__tooltip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 4px solid transparent;
+  border-top-color: #0f172a;
+}

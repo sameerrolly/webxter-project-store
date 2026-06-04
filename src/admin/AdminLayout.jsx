@@ -1,6 +1,16 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { adminApiLogout, getAdminUser } from "./adminApi";
+import {
+  getAdminNotifications,
+  getAdminUnreadCount,
+  markAdminRead,
+  markAllAdminRead,
+  clearAdminNotifications,
+  relativeTime,
+  NOTIF_META,
+  seedDemoNotifications,
+} from "../notificationStore";
 import "./admin.css";
 
 const NAV = [
@@ -31,19 +41,68 @@ export default function AdminLayout({ children }) {
   const navigate  = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notifOpen,   setNotifOpen]   = useState(false);
+  const [notifs,      setNotifs]      = useState(() => getAdminNotifications());
+  const [unread,      setUnread]      = useState(() => getAdminUnreadCount());
   const notifRef = useRef(null);
 
-  const user    = getAdminUser();
+  const user     = getAdminUser();
   const initials = (user?.username || user?.first_name || "A")[0].toUpperCase();
 
-  // Close notification dropdown on outside click
+  // Seed demo notifications on first load (admin side only)
+  useEffect(() => {
+    seedDemoNotifications(null);
+    const refresh = () => {
+      setNotifs(getAdminNotifications());
+      setUnread(getAdminUnreadCount());
+    };
+    refresh();
+    window.addEventListener("wx-notif-admin", refresh);
+    const interval = setInterval(refresh, 10000);
+    return () => {
+      window.removeEventListener("wx-notif-admin", refresh);
+      clearInterval(interval);
+    };
+  }, []);
+
+  // Refresh count when dropdown closes (marks happen inside)
+  const handleOpenNotif = () => {
+    setNotifOpen((o) => !o);
+    setNotifs(getAdminNotifications());
+    setUnread(getAdminUnreadCount());
+  };
+
+  // Close on outside click
   useEffect(() => {
     const h = (e) => {
-      if (notifRef.current && !notifRef.current.contains(e.target)) setNotifOpen(false);
+      if (notifRef.current && !notifRef.current.contains(e.target)) {
+        setNotifOpen(false);
+        setNotifs(getAdminNotifications());
+        setUnread(getAdminUnreadCount());
+      }
     };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
+
+  const handleNotifClick = (n) => {
+    markAdminRead(n.id);
+    setNotifs(getAdminNotifications());
+    setUnread(getAdminUnreadCount());
+    setNotifOpen(false);
+    navigate(n.link || "/admin/orders");
+  };
+
+  const handleMarkAll = () => {
+    markAllAdminRead();
+    setNotifs(getAdminNotifications());
+    setUnread(0);
+  };
+
+  const handleClear = () => {
+    clearAdminNotifications();
+    setNotifs([]);
+    setUnread(0);
+  };
 
   const handleLogout = async () => {
     await adminApiLogout();
@@ -108,28 +167,84 @@ export default function AdminLayout({ children }) {
             {NAV.find((n) => location.pathname.startsWith(n.path))?.label || "Admin"}
           </div>
           <div className="adm-topbar__right">
-            {/* Notification bell — static placeholder; wire to API when backend supports it */}
+            {/* Notification bell */}
             <div className="adm-notif" ref={notifRef}>
               <button
                 className="adm-notif__btn"
-                onClick={() => setNotifOpen((o) => !o)}
-                aria-label="Notifications"
+                onClick={handleOpenNotif}
+                aria-label={`Notifications${unread > 0 ? ` (${unread})` : ""}`}
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
                   <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
                 </svg>
+                {unread > 0 && (
+                  <span className="adm-notif__badge">{unread > 9 ? "9+" : unread}</span>
+                )}
               </button>
+
               {notifOpen && (
                 <div className="adm-notif__dropdown">
-                  <div className="adm-notif__header"><span>Notifications</span></div>
-                  <div className="adm-notif__empty">
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-                      <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-                    </svg>
-                    <p>All caught up!</p>
+                  <div className="adm-notif__header">
+                    <span className="adm-notif__header-title">Notifications</span>
+                    {unread > 0 && <span className="adm-notif__new">{unread} new</span>}
+                    <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+                      {unread > 0 && (
+                        <button className="adm-notif__action-btn" onClick={handleMarkAll} title="Mark all read">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                        </button>
+                      )}
+                      {notifs.length > 0 && (
+                        <button className="adm-notif__action-btn" onClick={handleClear} title="Clear all">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+                        </button>
+                      )}
+                    </div>
                   </div>
+
+                  {notifs.length === 0 ? (
+                    <div className="adm-notif__empty">
+                      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                        <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                      </svg>
+                      <p>All caught up!</p>
+                    </div>
+                  ) : (
+                    <div className="adm-notif__list">
+                      {notifs.map((n) => {
+                        const meta = NOTIF_META[n.type] || NOTIF_META.system;
+                        return (
+                          <button
+                            key={n.id}
+                            className={`adm-notif__item${n.read ? "" : " adm-notif__item--unread"}`}
+                            onClick={() => handleNotifClick(n)}
+                          >
+                            <div className="adm-notif__item-dot" style={{ background: meta.bg, color: meta.color }}>
+                              {n.type === "order_placed" && (
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+                              )}
+                              {n.type === "order_status" && (
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                              )}
+                              {n.type === "new_user" && (
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                              )}
+                              {(n.type === "ticket" || n.type === "system") && (
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                              )}
+                            </div>
+                            <div className="adm-notif__item-text">
+                              <div className="adm-notif__item-title">{n.title}</div>
+                              <div className="adm-notif__item-body">{n.body}</div>
+                              <div className="adm-notif__item-time">{relativeTime(n.createdAt)}</div>
+                            </div>
+                            {!n.read && <div className="adm-notif__unread-dot" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

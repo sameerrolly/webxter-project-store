@@ -205,7 +205,9 @@ function RegisterForm({ onSwitch }) {
   const set = (k) => (e) => {
     setForm((f) => ({ ...f, [k]: e.target.value }));
     setErrors((er) => ({ ...er, [k]: "" }));
-    setApiError("");
+    // Clear duplicate email banner when user changes the email field
+    if (k === "email") setApiError("");
+    else setApiError((prev) => (prev !== "duplicate" ? "" : prev));
   };
 
   const validateStep1 = () => {
@@ -247,8 +249,20 @@ function RegisterForm({ onSwitch }) {
       });
       navigate("/student/dashboard", { replace: true });
     } catch (err) {
-      setApiError(err.message || "Registration failed. Please try again.");
-      setStep(1);
+      const msg = err.message || "Registration failed. Please try again.";
+      const isDuplicate =
+        msg.toLowerCase().includes("already registered") ||
+        msg.toLowerCase().includes("already exists") ||
+        msg.toLowerCase().includes("email is already");
+      if (isDuplicate) {
+        // Go back to step 1 and highlight the email field
+        setStep(1);
+        setErrors((prev) => ({ ...prev, email: "An account with this email already exists." }));
+        setApiError("duplicate");
+      } else {
+        setApiError(msg);
+        setStep(1);
+      }
     } finally {
       setLoading(false);
     }
@@ -260,7 +274,7 @@ function RegisterForm({ onSwitch }) {
       <p style={{ fontSize: ".875rem", color: "#64748b", marginBottom: 20 }}>Join Webxter Student Portal</p>
 
       {/* ── Server error banner ── */}
-      {apiError && (
+      {apiError && apiError !== "duplicate" && (
         <div style={{
           display: "flex", alignItems: "flex-start", gap: 10,
           background: "#fef2f2", border: "1px solid #fecaca",
@@ -271,6 +285,30 @@ function RegisterForm({ onSwitch }) {
             <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
           </svg>
           <span>{apiError}</span>
+        </div>
+      )}
+
+      {/* ── Duplicate email banner ── */}
+      {apiError === "duplicate" && (
+        <div style={{
+          display: "flex", alignItems: "flex-start", gap: 10,
+          background: "#fef2f2", border: "1px solid #fecaca",
+          borderRadius: 10, padding: "12px 14px", marginBottom: 16,
+          fontSize: ".85rem", color: "#b91c1c", lineHeight: 1.6,
+        }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 2 }}>
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <span>
+            An account with this email already exists.{" "}
+            <button
+              type="button"
+              onClick={() => onSwitch("login")}
+              style={{ background: "none", border: "none", cursor: "pointer", color: "#b91c1c", fontWeight: 700, padding: 0, textDecoration: "underline", fontSize: ".85rem" }}
+            >
+              Sign in instead →
+            </button>
+          </span>
         </div>
       )}
 

@@ -87,12 +87,12 @@ function OrderSummary({ cart, total }) {
 
       <button className="cp-btn cp-btn--primary cp-btn--full cp-btn--lg" onClick={() => navigate("/checkout")}>
         Proceed to Checkout
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
         </svg>
       </button>
 
-      <Link to="/" className="cp-btn cp-btn--ghost cp-btn--full" style={{ marginTop: 10 }}>
+      <Link to="/" className="cp-btn cp-btn--ghost cp-btn--full" style={{ marginTop: 8 }}>
         ← Continue Shopping
       </Link>
 

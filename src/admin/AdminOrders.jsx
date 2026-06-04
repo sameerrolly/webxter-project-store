@@ -6,6 +6,7 @@ import {
   deleteAdminOrder,
   extractApiError,
 } from "./adminApi";
+import { addStudentNotification } from "../notificationStore";
 
 // Backend status values
 const STATUS_OPTIONS = [
@@ -146,7 +147,6 @@ export default function AdminOrders() {
   useEffect(() => { load(); }, []);
 
   // Normalise field names from Django (snake_case) or legacy (camelCase)
-  // notes format: "Payment: razorpay | TxnID: xxx | Phone: 9876543210 | College: IIT Delhi"
   const norm = (o) => {
     const notes = o.notes || "";
     const extract = (key) => {
@@ -158,12 +158,15 @@ export default function AdminOrders() {
     const txnId   = o.txn_id  || extract("TxnID")   || "";
     const payMethod = o.pay_method ?? o.payMethod ?? extract("Payment") ?? "razorpay";
 
+    // Amount: prefer final_amount (post-coupon) → total_amount → amount
+    const amount = parseFloat(o.final_amount ?? o.total_amount ?? o.amount ?? 0) || 0;
+
     return {
       ...o,
       customer:  o.client_name   ?? o.customer_name ?? o.customer ?? "",
       email:     o.client_email  ?? o.email         ?? "",
       project:   o.project_title ?? o.project       ?? "",
-      amount:    parseFloat(o.final_amount || o.total_amount || o.amount || 0),
+      amount,
       payMethod,
       phone,
       college,
@@ -190,6 +193,28 @@ export default function AdminOrders() {
       const updated = await updateAdminOrderStatus(id, status);
       setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, ...updated } : o)));
       if (selected?.id === id) setSelected((s) => ({ ...s, ...updated }));
+
+      // ── Notify the student whose order was updated ──────────────────────
+      const order = orders.find((o) => String(o.id) === String(id));
+      const email = order?.email || order?.client_email || "";
+      const project = order?.project_title || order?.project || `Order #${id}`;
+      if (email) {
+        const STATUS_MSG = {
+          confirmed:   "Your order has been confirmed! We're getting started on it.",
+          in_progress: "Great news — your project is now in progress!",
+          delivered:   "Your project has been delivered! Check your email for files.",
+          completed:   "Your order is complete. Download your files from My Orders.",
+          cancelled:   "Your order has been cancelled. Contact support if this is a mistake.",
+        };
+        addStudentNotification(email.toLowerCase(), {
+          type:  "order_status",
+          title: `Order ${STATUS_LABEL[status] || status}`,
+          body:  STATUS_MSG[status] || `Your order for "${project}" is now ${STATUS_LABEL[status] || status}.`,
+          link:  "/student/orders",
+        });
+      }
+      // ── End notification ────────────────────────────────────────────────
+
     } catch (err) {
       alert(extractApiError(err));
     } finally {
@@ -212,8 +237,9 @@ export default function AdminOrders() {
   };
 
   const totalRevenue = orders
+    .map(norm)
     .filter((o) => o.status === "delivered" || o.status === "completed")
-    .reduce((s, o) => s + Number(o.amount || 0), 0);
+    .reduce((s, o) => s + (o.amount || 0), 0);
 
   const [licenseTemplate, setLicenseTemplate] = React.useState(
     () => localStorage.getItem("wx_admin_license_template") || ""

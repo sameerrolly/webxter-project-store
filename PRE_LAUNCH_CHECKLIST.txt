@@ -1,0 +1,265 @@
+================================================================================
+  WEBXTER PROJECT STORE — PRE-LAUNCH CHECKLIST
+  Generated: June 3, 2026
+  Status: Work in progress — DO NOT GO LIVE until all 🔴 items are resolved
+================================================================================
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔴  CRITICAL — BLOCKS GOING LIVE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[ ] 1. RAZORPAY KEY IS STILL A PLACEHOLDER
+        File : .env  →  VITE_RAZORPAY_KEY_ID=rzp_test_REPLACE_WITH_YOUR_KEY
+        Fix  : Set your LIVE Razorpay key in .env.production
+               VITE_RAZORPAY_KEY_ID=rzp_live_XXXXXXXXXXXXXXXXXX
+               Without this every payment goes to test mode or fails silently.
+               Also remove the || "rzp_test_REPLACE_WITH_YOUR_KEY" fallback
+               in src/CheckoutPage.jsx line 9 so a missing key fails loudly.
+
+[ ] 2. .env.production IS COMPLETELY EMPTY
+        File : .env.production
+        Fix  : Add ALL required variables:
+               VITE_API_URL=https://your-production-backend.com
+               VITE_RAZORPAY_KEY_ID=rzp_live_XXXXXXXXXXXXXXXXXX
+        Note : src/student/StudentApi.js has NO fallback for VITE_API_URL.
+               In production it will be undefined → every student API call
+               (login, register, orders, avatar) will silently fail with
+               malformed URLs like "undefinedhttp://...".
+
+[ ] 3. HARDCODED ADMIN PASSWORD IN SOURCE CODE
+        File : src/admin/adminStore.js  line ~313
+               const ADMIN_CREDENTIALS = { username: "admin", password: "webxter@2024" }
+        Fix  : Delete the entire ADMIN_CREDENTIALS block + adminLogin() +
+               adminLogout() + isAdminLoggedIn() from adminStore.js.
+               These are dead code — production admin login uses the Django
+               JWT API via adminApi.js. The hardcoded password is visible
+               to anyone with repo access.
+
+[ ] 4. DEMO STUDENT ACCOUNTS WITH PLAINTEXT PASSWORDS
+        Files: src/student/studentStore.js  (DEMO_ACCOUNTS array)
+               src/student/StudentAuth.jsx  (DEMO_USERS array)
+        Accounts: rahul@example.com / Student@123
+                  priya@example.com / Student@123
+                  amit@example.com  / Student@123
+        Fix  : Remove DEMO_ACCOUNTS from studentStore.js entirely.
+               Remove DEMO_USERS from StudentAuth.jsx entirely.
+               These are live backdoor logins via the localStorage auth path.
+
+[ ] 5. ALL COUPON CODES VISIBLE IN THE BROWSER (HUGE SECURITY RISK)
+        File : src/main.jsx  lines 14–23  (SEED_COUPONS array)
+        Issue: The full coupon list — codes, discount %, validity — is
+               seeded into localStorage on every page load. Any user can
+               open DevTools → Application → localStorage and read every
+               valid coupon (including 50% WEBXTERS discount).
+               Coupon validation also runs client-side in the browser,
+               so it is completely bypassable.
+        Fix  : Remove SEED_COUPONS from main.jsx entirely.
+               Move ALL coupon validation to the Django backend.
+               The checkout should POST the coupon code to the server
+               and let Django validate it — never the browser.
+
+[ ] 6. ADMIN PANEL TRUSTS STORED TOKENS WHEN BACKEND IS OFFLINE
+        File : src/admin/AdminGuard.jsx  lines 28–32
+               if (isNetworkError && isAdminApiLoggedIn()) { setStatus("ok"); }
+        Issue: If Django is down, any stored JWT (expired, stolen, old)
+               still grants full admin access.
+        Fix  : Check the JWT expiry claim (exp) client-side before trusting
+               an offline fallback. If the token is expired, force re-login.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🟠  HIGH — SHOULD FIX BEFORE LAUNCH
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[ ] 7. NO REACT ERROR BOUNDARY
+        Files: src/main.jsx, src/App.jsx
+        Issue: One bad API response crashing any component will white-screen
+               the entire app with no recovery UI — very bad user experience.
+        Fix  : Create an ErrorBoundary component and wrap <App /> in main.jsx.
+               Also wrap each major section (store, admin, student) separately.
+
+[ ] 8. NO REAL 404 PAGE
+        File : src/App.jsx  line ~70
+               <Route path="*" element={<Navigate to="/" replace />} />
+        Issue: All unknown URLs silently redirect to home. Users hitting
+               dead links, mistyped URLs, or removed pages get zero feedback.
+        Fix  : Create a NotFoundPage component and use it on path="*".
+
+[ ] 9. NEWSLETTER FORM IS FAKE — DOES NOTHING
+        File : src/Layout.jsx  line ~454
+               onSubmit={(e) => { e.preventDefault(); if (email) setSubscribed(true); }}
+        Issue: No email is collected, no API is called. Users who subscribe
+               get a fake "Thanks for subscribing!" and are silently ignored.
+        Fix  : Integrate with Mailchimp / ConvertKit / your own API,
+               OR remove the newsletter form entirely.
+
+[ ] 10. SUPPORT TICKETS NEVER REACH YOU
+         File : src/student/StudentSupport.jsx (uses studentStore.addStudentTicket)
+         Issue: Tickets are stored in localStorage only. They never hit the
+                backend, never reach the admin panel, and are lost when the
+                user clears browser data. You will miss real support requests.
+         Fix  : Build a real support ticket API endpoint in Django,
+                OR redirect users to WhatsApp/email directly.
+
+[ ] 11. LOCAL PASSWORD "HASHING" IS NOT SECURE
+         File : src/student/studentStore.js  hashPassword() function
+                function hashPassword(pw) { let h = 0; ... return `wx_${...}`; }
+         Issue: This is a simple CRC/checksum — not bcrypt, not SHA-256.
+                Trivially reversible. Passwords stored this way in localStorage
+                can be read by anyone with DevTools access.
+         Fix  : Remove the entire localStorage auth path from studentStore.js.
+                All auth should go through Django JWT only.
+
+[ ] 12. FAKE PROJECT LINKS IN FALLBACK DATA
+         File : src/admin/adminStore.js  DEFAULT_PROJECTS array
+                url: "https://github.com/webxter/library-mgmt"   ← fake repo
+                url: "https://drive.google.com/file/d/example"   ← broken link
+         Issue: If the backend is unreachable, these placeholder projects
+                with broken links appear to real users.
+         Fix  : Remove DEFAULT_PROJECTS entirely from adminStore.js.
+                Projects must come from the Django backend only.
+
+[ ] 13. ALL PROJECT IMAGES ARE LOREM IPSUM PLACEHOLDERS
+         File : src/admin/adminStore.js  DEFAULT_PROJECTS
+                All screenshots use https://picsum.photos/seed/xxx/800/500
+         Issue: Random internet images are shown as "project screenshots".
+         Fix  : Upload real project screenshots to the Django backend,
+                then remove DEFAULT_PROJECTS from the frontend.
+
+[ ] 14. CONTACT INFO HARDCODED IN MULTIPLE JSX FILES
+         Files: src/CheckoutPage.jsx  line ~355
+                src/Layout.jsx  (footer)
+                src/StudentProjects.jsx  (CTA section)
+                src/student/StudentAuth.jsx (forgot password)
+                src/admin/adminStore.js DEFAULT_SETTINGS
+         Hardcoded: +91-8264796534  and  projects@webxter.in
+         Fix  : Pull phone/email/WhatsApp from the settings API response.
+                If the number changes, one backend update should reflect everywhere.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🟡  MEDIUM — CLEANUP BEFORE LAUNCH
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[ ] 15. DEMO ORDERS SHOW IN ADMIN ORDERS TABLE
+         File : src/admin/adminStore.js  DEFAULT_ORDERS (DEMO-001 to DEMO-005)
+         Issue: Demo orders are filtered from analytics but still appear in the
+                Orders page with a DEMO badge. Looks unprofessional on a live site.
+         Fix  : Once the backend has real orders, remove DEFAULT_ORDERS entirely
+                OR only load them when the backend returns 0 orders AND show a
+                clear "No real orders yet — connect backend to see live data" notice.
+
+[ ] 16. DEMO NOTIFICATIONS SEEDED IN ADMIN + STUDENT BELL
+         File : src/notificationStore.js  seedDemoNotifications()
+         Issue: Fake notifications (Rahul's order, Priya's order, coupon alerts)
+                are seeded into localStorage on first load and show in the bell.
+         Fix  : Remove the seedDemoNotifications() calls from AdminLayout.jsx
+                and StudentLayout.jsx before going live.
+
+[ ] 17. FAKE DEMO USERS IN ADMIN COUPON ASSIGNMENT LIST
+         File : src/admin/adminStore.js  getAllStudents()  DEMO array
+                rahul@example.com, priya@example.com, amit@example.com
+         Issue: These 3 demo users always appear in the coupon assignment
+                dropdown even in production.
+         Fix  : Remove the DEMO array from getAllStudents().
+
+[ ] 18. COPYRIGHT YEAR IS WRONG — SHOWS 2026
+         Files: src/Layout.jsx  line ~482
+                src/StudentProjects.jsx  line ~1089
+         Fix  : Change © 2026 Webxter → © 2025 Webxter
+                Or use: new Date().getFullYear() dynamically.
+
+[ ] 19. coupon-cache.json IS COMMITTED TO THE REPO
+         File : coupon-cache.json  (repo root)
+         Issue: This local cache file may contain real coupon codes and should
+                not be version-controlled.
+         Fix  : Add coupon-cache.json to .gitignore immediately.
+                Run: git rm --cached coupon-cache.json
+
+[ ] 20. DEVELOPER SCRIPTS IN REPO ROOT
+         Files: check-orders.mjs
+                check-orders2.mjs
+                seed-projects.mjs
+         Issue: These are dev utility scripts — they may contain credentials
+                or raw API calls. They shouldn't sit in the project root.
+         Fix  : Move to a /scripts folder.
+                Add to .gitignore if they contain any credentials or tokens.
+
+[ ] 21. vite.config.js HAS A WEBPACK OPTION THAT VITE IGNORES
+         File : vite.config.js
+                server: { historyApiFallback: true }
+         Issue: historyApiFallback is a webpack-dev-server option. Vite handles
+                SPA routing natively — this line does nothing.
+         Fix  : Remove the option. For production hosting, configure your
+                server (Nginx/Apache/Vercel/Netlify) to serve index.html for
+                all routes. Document this in your deployment guide.
+
+[ ] 22. PACKAGE VERSIONS USE OPEN ^ RANGES
+         File : package.json
+                "axios": "^1.16.1"
+                "react": "^18.2.0"
+         Issue: Open ranges can pull breaking changes on fresh installs.
+         Fix  : Consider pinning exact versions for production reproducibility.
+                Run: npm install --save-exact <package>
+
+[ ] 23. VERIFY "SINCE 2010" TAGLINE IS ACCURATE
+         Files: src/Layout.jsx  line ~380
+                src/StudentProjects.jsx  line ~973
+                Text: "...since 2010"
+         Fix  : Confirm this founding year matches Webxter's actual history.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚡  QUICK WINS — DO THESE IN UNDER 10 MINUTES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[ ] Fill .env.production with VITE_API_URL and VITE_RAZORPAY_KEY_ID   (2 min)
+[ ] Add coupon-cache.json to .gitignore                                (1 min)
+[ ] Fix copyright year © 2026 → © 2025 in Layout.jsx                  (1 min)
+[ ] Delete ADMIN_CREDENTIALS block from adminStore.js                  (2 min)
+[ ] Remove SEED_COUPONS from main.jsx                                  (3 min)
+[ ] Remove DEMO_ACCOUNTS from studentStore.js                          (2 min)
+[ ] Remove DEMO_USERS from StudentAuth.jsx                             (2 min)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋  BACKEND (DJANGO) — ALSO NEEDED BEFORE LAUNCH
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[ ] Implement server-side coupon validation at order creation
+[ ] Add support ticket API endpoint (POST/GET /api/v1/support/tickets/)
+[ ] Ensure CORS is restricted to your production domain only
+    (not allow-all * in production)
+[ ] Set DEBUG=False in Django production settings
+[ ] Set ALLOWED_HOSTS to your actual domain
+[ ] Configure proper database (PostgreSQL) — not SQLite in production
+[ ] Set up media file serving (S3 / Cloudinary / Nginx) for uploads
+[ ] Configure email backend for password reset and order confirmations
+[ ] Add rate limiting to login and register endpoints
+[ ] Implement Razorpay webhook for payment verification
+    (currently payment is only confirmed client-side — server should
+     verify via Razorpay webhook before marking order as paid)
+[ ] Add the Analytics dashboard endpoint (see backend/ANALYTICS_SETUP.md)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🚀  DEPLOYMENT CHECKLIST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[ ] Run: npm run build  →  check for 0 errors
+[ ] Test the built /dist on a real server (not npm run dev)
+[ ] Configure server to serve index.html for all routes (SPA fallback)
+[ ] Test full checkout flow with Razorpay live key
+[ ] Test login / register / forgot password flows
+[ ] Test admin login and dashboard with real backend data
+[ ] Verify HTTPS is enforced on all domains
+[ ] Set up monitoring / uptime alerts
+[ ] Set up error logging (Sentry or similar)
+
+
+================================================================================
+  REMINDER: The two items that COMPLETELY BLOCK going live are:
+  1. .env.production is empty   →  all API calls will fail
+  2. Razorpay key is placeholder →  all payments will fail
+================================================================================

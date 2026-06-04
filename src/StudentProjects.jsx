@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { useCart } from "./CartContext";
 import { getProjectsApi } from "./student/StudentApi";
+import { getSettings } from "./admin/adminStore";
 import "./StudentProjects.css";
 
 // ─── SVG Icon Library ─────────────────────────────────────────────────────────
@@ -1099,11 +1100,58 @@ function Footer() {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
+// ─── Maintenance Banner ───────────────────────────────────────────────────────
+function MaintenanceBanner() {
+  const settings = getSettings();
+  if (!settings.maintenanceMode) return null;
+
+  const message =
+    settings.maintenanceMessage ||
+    "We're currently under maintenance. We'll be back shortly. For urgent queries, contact us on WhatsApp.";
+
+  return (
+    <div style={{
+      position: "sticky", top: 0, zIndex: 999,
+      background: "linear-gradient(90deg, #b91c1c 0%, #dc2626 100%)",
+      color: "#fff",
+      padding: "14px 24px",
+      display: "flex", alignItems: "center", justifyContent: "center", gap: 12,
+      boxShadow: "0 2px 12px rgba(185,28,28,.35)",
+      flexWrap: "wrap", textAlign: "center",
+    }}>
+      {/* Warning icon */}
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+        <line x1="12" y1="9" x2="12" y2="13"/>
+        <line x1="12" y1="17" x2="12.01" y2="17"/>
+      </svg>
+      <span style={{ fontWeight: 700, fontSize: ".9rem", letterSpacing: ".3px" }}>
+        🔧 Site Under Maintenance
+      </span>
+      <span style={{ fontSize: ".85rem", opacity: .92, maxWidth: 600 }}>{message}</span>
+      <a
+        href="https://wa.me/918264796534"
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          background: "#fff", color: "#b91c1c", fontWeight: 700,
+          fontSize: ".78rem", padding: "5px 14px", borderRadius: 20,
+          textDecoration: "none", flexShrink: 0, whiteSpace: "nowrap",
+        }}
+      >
+        Contact Us
+      </a>
+    </div>
+  );
+}
+
 export default function StudentProjects() {
   const { addToCart } = useCart();
 
   return (
     <>
+      <MaintenanceBanner />
       <HeroBanner />
       <HowWeHelp />
       <ProjectsSection onAddToCart={addToCart} />

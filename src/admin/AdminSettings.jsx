@@ -144,11 +144,23 @@ export default function AdminSettings() {
             <div className={`adm-toggle__track ${settings.maintenanceMode ? "adm-toggle__track--on" : ""}`} onClick={() => setToggle("maintenanceMode")}>
               <div className="adm-toggle__thumb" />
             </div>
-            <span className="adm-toggle__label">Maintenance Mode (hides store from visitors)</span>
+            <span className="adm-toggle__label">Maintenance Mode (shows maintenance message to visitors)</span>
           </label>
+          <div className="adm-field" style={{ marginTop: 16 }}>
+            <label className="adm-field__label">Maintenance Message</label>
+            <textarea
+              className="adm-field__input"
+              rows={3}
+              value={settings.maintenanceMessage || ""}
+              onChange={set("maintenanceMessage")}
+              placeholder="We're under maintenance. We'll be back soon!"
+              style={{ resize: "vertical", minHeight: 72 }}
+            />
+            <p className="adm-field__hint">This message is shown to visitors on the store and project pages when maintenance mode is ON.</p>
+          </div>
           {settings.maintenanceMode && (
             <div style={{ marginTop: 12, background: "rgba(239,68,68,.08)", border: "1px solid rgba(239,68,68,.2)", borderRadius: 8, padding: "10px 14px", fontSize: ".82rem", color: "#dc2626", fontWeight: 500 }}>
-              ⚠ Maintenance mode is ON — the store is hidden from visitors.
+              ⚠ Maintenance mode is ON — visitors will see the maintenance message.
             </div>
           )}
         </div>

@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useCart } from "./CartContext";
 import { addOrder } from "./admin/adminStore";
 import { createOrderApi, getProjectsApi, validateCouponAnywhere } from "./student/StudentApi";
+import { addAdminNotification, addStudentNotification } from "./notificationStore";
 import "./CheckoutPage.css";
 
 const RAZORPAY_KEY = import.meta.env.VITE_RAZORPAY_KEY_ID || "rzp_test_REPLACE_WITH_YOUR_KEY";
@@ -277,6 +278,31 @@ export default function CheckoutPage() {
           const oid = await createBackendOrder(response.razorpay_payment_id);
           setOrderId(oid || response.razorpay_payment_id);
           clearCart();
+
+          // ── Fire notifications ──────────────────────────────────────────
+          const projectNames = cart.map((i) => i.title).join(", ");
+          const displayOid   = oid || response.razorpay_payment_id;
+
+          // Admin: new order alert
+          addAdminNotification({
+            type:  "order_placed",
+            title: `New order from ${form.name}`,
+            body:  `₹${finalTotal.toLocaleString("en-IN")} · ${projectNames}`,
+            link:  "/admin/orders",
+          });
+
+          // Student: purchase confirmation (if logged in)
+          const studentEmail = form.email?.trim().toLowerCase();
+          if (studentEmail) {
+            addStudentNotification(studentEmail, {
+              type:  "order_placed",
+              title: "Order placed successfully!",
+              body:  `Your order #${displayOid} for ${projectNames} is confirmed. We'll deliver within your window.`,
+              link:  "/student/orders",
+            });
+          }
+          // ── End notifications ───────────────────────────────────────────
+
           setStep("success");
         } catch (err) {
           setSubmitError("Payment received but order creation failed. Contact support with Payment ID: " + response.razorpay_payment_id);
@@ -414,43 +440,43 @@ export default function CheckoutPage() {
 
               {/* Razorpay info card */}
               <div style={{
-                display: "flex", alignItems: "center", gap: 16,
+                display: "flex", alignItems: "center", gap: 14,
                 background: "linear-gradient(135deg, #f0faff, #fdf0ff)",
                 border: "1.5px solid rgba(0,159,212,.25)",
-                borderRadius: 14, padding: "18px 20px",
+                borderRadius: 12, padding: "16px 18px",
+                flexWrap: "wrap",
               }}>
                 <div style={{
-                  width: 48, height: 48, borderRadius: 12, flexShrink: 0,
+                  width: 44, height: 44, borderRadius: 10, flexShrink: 0,
                   background: "#072654", display: "flex", alignItems: "center", justifyContent: "center",
                 }}>
-                  {/* Razorpay logo mark */}
-                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
                     <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="#00BAF2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
                 </div>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: ".95rem", color: "#0f172a" }}>Pay securely with Razorpay</div>
-                  <div style={{ fontSize: ".8rem", color: "#64748b", marginTop: 2 }}>
-                    UPI · Cards · Net Banking · Wallets — all in one click
+                <div style={{ flex: 1, minWidth: 140 }}>
+                  <div style={{ fontWeight: 700, fontSize: ".88rem", color: "#0f172a" }}>Pay securely with Razorpay</div>
+                  <div style={{ fontSize: ".75rem", color: "#64748b", marginTop: 2 }}>
+                    UPI · Cards · Net Banking · Wallets
                   </div>
                 </div>
-                <div style={{ marginLeft: "auto", display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
                   {["UPI", "Visa", "MC", "NB"].map((m) => (
-                    <span key={m} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 6, padding: "3px 8px", fontSize: ".68rem", fontWeight: 700, color: "#334155" }}>{m}</span>
+                    <span key={m} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 5, padding: "2px 7px", fontSize: ".65rem", fontWeight: 700, color: "#334155" }}>{m}</span>
                   ))}
                 </div>
               </div>
 
-              <p style={{ fontSize: ".78rem", color: "#94a3b8", marginTop: 10, display: "flex", alignItems: "center", gap: 6 }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              <p style={{ fontSize: ".72rem", color: "#94a3b8", marginTop: 8, display: "flex", alignItems: "center", gap: 5 }}>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                 Your payment is 100% secure. We never store card details.
               </p>
             </div>
 
             {/* Error */}
             {submitError && (
-              <div style={{ background: "rgba(239,68,68,.08)", border: "1px solid rgba(239,68,68,.2)", borderRadius: 10, padding: "12px 16px", color: "#dc2626", fontSize: ".875rem", marginBottom: 16, display: "flex", gap: 8, alignItems: "flex-start" }}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <div style={{ background: "rgba(239,68,68,.08)", border: "1px solid rgba(239,68,68,.2)", borderRadius: 10, padding: "11px 14px", color: "#dc2626", fontSize: ".8rem", marginBottom: 14, display: "flex", gap: 8, alignItems: "flex-start" }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                 {submitError}
               </div>
             )}

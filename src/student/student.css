@@ -1340,3 +1340,55 @@ textarea.sd-field__input { resize: vertical; min-height: 80px; }
     border-radius: 20px 20px 0 0;
   }
 }
+
+/* ── Notification bell — extended (real data) ── */
+.sd-notif__action-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: 6px;
+  background: none; border: 1px solid var(--sd-border);
+  cursor: pointer; color: var(--sd-text-muted); transition: all .15s;
+}
+.sd-notif__action-btn:hover { background: #f1f5f9; color: var(--sd-text); }
+
+/* Restyle item as button (was Link before) */
+.sd-notif__item {
+  display: flex; align-items: flex-start; gap: 11px;
+  padding: 11px 14px; border: none; width: 100%;
+  background: none; cursor: pointer; text-align: left;
+  border-bottom: 1px solid #f8f9fb; transition: background var(--sd-transition);
+  text-decoration: none; color: inherit;
+}
+.sd-notif__item:last-child { border-bottom: none; }
+.sd-notif__item:hover { background: #f8f9fb; }
+.sd-notif__item--unread { background: rgba(0,159,212,.03); }
+.sd-notif__item--unread:hover { background: rgba(0,159,212,.06); }
+
+.sd-notif__item-dot {
+  width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  margin-top: 1px;
+}
+
+/* Override old plain dot */
+.sd-notif__dot { display: none; }
+
+.sd-notif__text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.sd-notif__item-title { font-size: .78rem; font-weight: 700; color: var(--sd-text); }
+.sd-notif__item-body {
+  font-size: .74rem; color: var(--sd-text-sec);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sd-notif__item-date { font-size: .68rem; color: var(--sd-text-muted); margin-top: 2px; }
+
+.sd-notif__unread-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--sd-grad-start); flex-shrink: 0; margin-top: 5px;
+}
+
+/* Close notif on outside click */
+.sd-notif__list { max-height: 340px; overflow-y: auto; }
+.sd-notif__list::-webkit-scrollbar { width: 4px; }
+.sd-notif__list::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
+
+/* Also close dropdown on outside */
+.sd-notif__dropdown { max-height: 80vh; overflow: hidden; }
