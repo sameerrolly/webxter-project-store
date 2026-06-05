@@ -35,6 +35,22 @@ const STATUS_LABEL = {
   cancelled:   "Cancelled",
 };
 
+// Dropdown colour maps for the status filter select
+const STATUS_SELECT_COLOR = {
+  pending:     "#d97706",
+  confirmed:   "#2563eb",
+  in_progress: "#2563eb",
+  delivered:   "#16a34a",
+  cancelled:   "#dc2626",
+};
+const STATUS_SELECT_BG = {
+  pending:     "rgba(217,119,6,.08)",
+  confirmed:   "rgba(37,99,235,.08)",
+  in_progress: "rgba(37,99,235,.08)",
+  delivered:   "rgba(22,163,74,.08)",
+  cancelled:   "rgba(220,38,38,.08)",
+};
+
 const PAY_LABEL = { upi: "UPI / GPay", whatsapp: "WhatsApp", bank: "Bank Transfer", razorpay: "Razorpay" };
 
 // ─── License text generator ───────────────────────────────────────────────────
@@ -276,22 +292,43 @@ export default function AdminOrders() {
         </div>
       </div>
 
-      {/* Quick stats */}
+      {/* Quick stats — click to filter */}
       <div className="adm-stats" style={{ marginBottom: 24 }}>
         {[
-          { label: "Total",       value: orders.length },
-          { label: "Delivered",   value: orders.filter((o) => o.status === "delivered" || o.status === "completed").length },
-          { label: "In Progress", value: orders.filter((o) => o.status === "in_progress" || o.status === "confirmed").length },
-          { label: "Pending",     value: orders.filter((o) => o.status === "pending").length },
-          { label: "Cancelled",   value: orders.filter((o) => o.status === "cancelled").length },
-        ].map((s) => (
-          <div key={s.label} className="adm-stat-card" style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
-            <div>
-              <div className="adm-stat-card__label">{s.label}</div>
-              <div className="adm-stat-card__value" style={{ fontSize: "1.5rem" }}>{s.value}</div>
+          { label: "Total",       value: orders.length,                                                                                        filter: "all",         color: "#009fd4", bg: "rgba(0,159,212,.08)"  },
+          { label: "Delivered",   value: orders.filter((o) => o.status === "delivered" || o.status === "completed").length,                    filter: "delivered",   color: "#16a34a", bg: "rgba(22,163,74,.08)"  },
+          { label: "In Progress", value: orders.filter((o) => o.status === "in_progress" || o.status === "confirmed").length,                  filter: "in_progress", color: "#2563eb", bg: "rgba(37,99,235,.08)"  },
+          { label: "Pending",     value: orders.filter((o) => o.status === "pending").length,                                                  filter: "pending",     color: "#d97706", bg: "rgba(217,119,6,.08)"  },
+          { label: "Cancelled",   value: orders.filter((o) => o.status === "cancelled").length,                                                filter: "cancelled",   color: "#dc2626", bg: "rgba(220,38,38,.08)"  },
+        ].map((s) => {
+          const isActive = statusFilter === s.filter;
+          return (
+            <div
+              key={s.label}
+              className="adm-stat-card"
+              onClick={() => setStatusFilter(s.filter)}
+              style={{
+                flexDirection: "row", alignItems: "center", gap: 16,
+                cursor: "pointer",
+                border: isActive ? `2px solid ${s.color}` : "2px solid transparent",
+                background: isActive ? s.bg : undefined,
+                transition: "border .15s, background .15s, transform .1s",
+                transform: isActive ? "translateY(-1px)" : undefined,
+              }}
+            >
+              <div style={{
+                width: 38, height: 38, borderRadius: 10,
+                background: s.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+              }}>
+                <div style={{ width: 10, height: 10, borderRadius: "50%", background: s.color }} />
+              </div>
+              <div>
+                <div className="adm-stat-card__label">{s.label}</div>
+                <div className="adm-stat-card__value" style={{ fontSize: "1.5rem", color: isActive ? s.color : undefined }}>{s.value}</div>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {error && (
@@ -304,18 +341,94 @@ export default function AdminOrders() {
 
       {/* Filters */}
       <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
+        {/* Search */}
         <div className="adm-search" style={{ flex: "1 1 200px", maxWidth: 280 }}>
-          <span className="adm-search__icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+          <span className="adm-search__icon">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </span>
           <input className="adm-search__input" placeholder="Search orders…" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
-        <div className="adm-filter-row" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {["all", "pending", "confirmed", "in_progress", "delivered", "cancelled"].map((s) => (
-            <button key={s} onClick={() => setStatusFilter(s)}
-              className={`adm-btn adm-btn--sm ${statusFilter === s ? "adm-btn--primary" : "adm-btn--ghost"}`}>
-              {STATUS_LABEL[s] || s}
+
+        {/* Status dropdown */}
+        <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+          <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: "#64748b" }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+          </span>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            style={{
+              paddingLeft: 32, paddingRight: 32, paddingTop: 8, paddingBottom: 8,
+              fontSize: ".85rem", fontWeight: 600,
+              border: "1.5px solid",
+              borderColor: statusFilter === "all" ? "#e2e8f0" : STATUS_SELECT_COLOR[statusFilter] || "#e2e8f0",
+              borderRadius: 8,
+              background: statusFilter === "all" ? "#fff" : STATUS_SELECT_BG[statusFilter] || "#fff",
+              color: statusFilter === "all" ? "#0f172a" : STATUS_SELECT_COLOR[statusFilter] || "#0f172a",
+              cursor: "pointer",
+              outline: "none",
+              appearance: "none",
+              WebkitAppearance: "none",
+              minWidth: 160,
+            }}
+          >
+            {[
+              { value: "all",         label: `All Orders (${orders.length})` },
+              { value: "pending",     label: `Pending (${orders.filter((o) => o.status === "pending").length})` },
+              { value: "confirmed",   label: `Confirmed (${orders.filter((o) => o.status === "confirmed").length})` },
+              { value: "in_progress", label: `In Progress (${orders.filter((o) => o.status === "in_progress").length})` },
+              { value: "delivered",   label: `Delivered (${orders.filter((o) => o.status === "delivered" || o.status === "completed").length})` },
+              { value: "cancelled",   label: `Cancelled (${orders.filter((o) => o.status === "cancelled").length})` },
+            ].map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+          <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: "#64748b" }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </span>
+        </div>
+
+        {/* Pill buttons */}
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {[
+            { value: "all",         label: "All" },
+            { value: "pending",     label: "Pending",     count: orders.filter((o) => o.status === "pending").length },
+            { value: "confirmed",   label: "Confirmed",   count: orders.filter((o) => o.status === "confirmed").length },
+            { value: "in_progress", label: "In Progress", count: orders.filter((o) => o.status === "in_progress").length },
+            { value: "delivered",   label: "Delivered",   count: orders.filter((o) => o.status === "delivered" || o.status === "completed").length },
+            { value: "cancelled",   label: "Cancelled",   count: orders.filter((o) => o.status === "cancelled").length },
+          ].map((s) => (
+            <button
+              key={s.value}
+              onClick={() => setStatusFilter(s.value)}
+              className={`adm-btn adm-btn--sm ${statusFilter === s.value ? "adm-btn--primary" : "adm-btn--ghost"}`}
+              style={{ display: "flex", alignItems: "center", gap: 5 }}
+            >
+              {s.label}
+              {s.count !== undefined && s.count > 0 && (
+                <span style={{
+                  background: statusFilter === s.value ? "rgba(255,255,255,.25)" : "rgba(0,159,212,.12)",
+                  color:      statusFilter === s.value ? "#fff" : "#009fd4",
+                  borderRadius: 20, padding: "1px 6px", fontSize: ".7rem", fontWeight: 700,
+                }}>
+                  {s.count}
+                </span>
+              )}
             </button>
           ))}
         </div>
+
+        {/* Clear filter */}
+        {(statusFilter !== "all" || search) && (
+          <button
+            className="adm-btn adm-btn--ghost adm-btn--sm"
+            onClick={() => { setStatusFilter("all"); setSearch(""); }}
+            style={{ color: "#ef4444", borderColor: "rgba(239,68,68,.3)" }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            Clear
+          </button>
+        )}
       </div>
 
       {loading ? <Spinner /> : (
