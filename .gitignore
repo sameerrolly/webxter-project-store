@@ -7,13 +7,20 @@ dist-ssr/
 *.local
 
 # ── Environment files ─────────────────────────────────────────────────────────
-# .env.local and .env.production contain real API keys and secrets — never commit
+# All .env files with real credentials — never commit
+.env
 .env.local
 .env.production
-# .env is committed with safe placeholder values (see .env.example)
+.env.*.local
+# Keep only .env.example (safe placeholder template — no real secrets)
 
 # ── Local data / cache files ──────────────────────────────────────────────────
 coupon-cache.json
+scripts/.tmp-media/
+
+# ── Temp / debug scripts (contain hardcoded credentials) ──────────────────────
+scripts/check-orders.mjs
+scripts/check-orders2.mjs
 
 # ── Editor / OS files ─────────────────────────────────────────────────────────
 .vscode/settings.json

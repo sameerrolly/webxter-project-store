@@ -9,9 +9,11 @@ import {
   uploadProjectThumbnail,
   uploadProjectMedia,
   addProjectMediaUrl,
+  updateProjectMedia,
   deleteProjectMedia,
   extractApiError,
 } from "./adminApi";
+import { uploadToSupabase } from "../supabaseClient";
 // Local store kept as fallback for the form helpers only
 import { getProjects } from "./adminStore";
 
@@ -80,20 +82,19 @@ const FILE_TYPES = [
   { value: "other", label: "Other Link", icon: "🔗" },
 ];
 
-function MediaManager({ media, demoVideo, onMediaChange, onVideoChange }) {
-  const [urlInput, setUrlInput]       = useState("");
+function MediaManager({ media, onMediaChange }) {
+  const [urlInput, setUrlInput]         = useState("");
   const [captionInput, setCaptionInput] = useState("");
-  const [typeInput, setTypeInput]     = useState("image");
-  const [uploading, setUploading]     = useState(false);
-  const [dragIdx, setDragIdx]         = useState(null);
-  const [dragOverIdx, setDragOverIdx] = useState(null);
+  const [uploading, setUploading]       = useState(false);
+  const [dragIdx, setDragIdx]           = useState(null);
+  const [dragOverIdx, setDragOverIdx]   = useState(null);
   const fileInputRef = useRef(null);
 
-  // ── URL-based add ──
+  // ── URL-based add (images only) ──
   const addMedia = () => {
     const u = urlInput.trim();
     if (!u) return;
-    const newItem = { type: typeInput, url: u, caption: captionInput.trim(), featured: media.length === 0 };
+    const newItem = { type: "image", url: u, caption: captionInput.trim(), featured: media.length === 0 };
     onMediaChange([...media, newItem]);
     setUrlInput(""); setCaptionInput("");
   };
@@ -103,19 +104,25 @@ function MediaManager({ media, demoVideo, onMediaChange, onVideoChange }) {
     const files = Array.from(e.target.files);
     if (!files.length) return;
     const newItems = files.map((file, idx) => ({
-      type: file.type.startsWith("video/") ? "video" : "image",
-      url: URL.createObjectURL(file),   // local preview only
-      _file: file,                       // actual File for backend upload
-      caption: file.name.replace(/\.[^.]+$/, ""),
+      type:     file.type.startsWith("video/") ? "video" : "image",
+      url:      URL.createObjectURL(file),   // local preview only
+      _file:    file,                         // actual File for Supabase upload on save
+      caption:  file.name.replace(/\.[^.]+$/, ""),
       featured: media.length === 0 && idx === 0,
+      _pending: true,                         // flag: not yet uploaded
     }));
     onMediaChange([...media, ...newItems]);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  // ── Set featured ──
+  // ── Set featured = move item to position 0 ──
+  // Position 0 is ALWAYS the featured image. Clicking ★ moves that item to front.
   const setFeatured = (idx) => {
-    onMediaChange(media.map((m, i) => ({ ...m, featured: i === idx })));
+    if (idx === 0) return; // already featured
+    const reordered = [...media];
+    const [item] = reordered.splice(idx, 1);
+    reordered.unshift(item);
+    onMediaChange(syncFeatured(reordered));
   };
 
   // ── Remove ──
@@ -157,32 +164,9 @@ function MediaManager({ media, demoVideo, onMediaChange, onVideoChange }) {
     onMediaChange(syncFeatured(reordered));
   };
 
-  // detect YouTube embed
-  const getYouTubeId = (url) => {
-    const m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/);
-    return m ? m[1] : null;
-  };
-
   return (
     <div>
-      {/* Demo video URL */}
-      <div className="adm-field" style={{ marginBottom: 16 }}>
-        <label className="adm-field__label">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "inline", marginRight: 5 }}><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
-          Featured Demo Video URL (YouTube or direct .mp4)
-        </label>
-        <input className="adm-field__input" placeholder="https://youtube.com/watch?v=... or https://example.com/demo.mp4"
-          value={demoVideo || ""} onChange={(e) => onVideoChange(e.target.value)} />
-        <p className="adm-field__hint">This video plays as the featured media on the product page</p>
-        {demoVideo && getYouTubeId(demoVideo) && (
-          <div style={{ marginTop: 8, borderRadius: 8, overflow: "hidden", maxWidth: 320, border: "1px solid #e2e8f0" }}>
-            <img src={`https://img.youtube.com/vi/${getYouTubeId(demoVideo)}/mqdefault.jpg`} alt="YouTube preview" style={{ width: "100%", display: "block" }} />
-            <div style={{ padding: "6px 10px", fontSize: ".75rem", color: "#64748b", background: "#f8f9fb" }}>YouTube preview</div>
-          </div>
-        )}
-      </div>
-
-      {/* Upload zone */}
+      {/* Upload zone — images only */}
       <div
         className="adm-upload-zone"
         onClick={() => fileInputRef.current?.click()}
@@ -194,11 +178,12 @@ function MediaManager({ media, demoVideo, onMediaChange, onVideoChange }) {
           const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith("image/") || f.type.startsWith("video/"));
           if (files.length) {
             const newItems = files.map((file, idx) => ({
-              type: file.type.startsWith("video/") ? "video" : "image",
-              url: URL.createObjectURL(file),
-              _file: file,
-              caption: file.name.replace(/\.[^.]+$/, ""),
+              type:     file.type.startsWith("video/") ? "video" : "image",
+              url:      URL.createObjectURL(file),
+              _file:    file,
+              caption:  file.name.replace(/\.[^.]+$/, ""),
               featured: media.length === 0 && idx === 0,
+              _pending: true,
             }));
             onMediaChange([...media, ...newItems]);
           }
@@ -225,7 +210,7 @@ function MediaManager({ media, demoVideo, onMediaChange, onVideoChange }) {
               <line x1="12" y1="3" x2="12" y2="15"/>
             </svg>
             <div style={{ fontWeight: 600, fontSize: ".875rem", color: "#0f172a" }}>Click or drag & drop to upload</div>
-            <div style={{ fontSize: ".75rem", color: "#94a3b8" }}>Images (JPG, PNG, WebP) or Videos (MP4, WebM) · Multiple files supported</div>
+            <div style={{ fontSize: ".75rem", color: "#94a3b8" }}>Images (JPG, PNG, WebP) or Videos (MP4, WebM) · Saved to Supabase on submit</div>
           </>
         )}
       </div>
@@ -233,7 +218,9 @@ function MediaManager({ media, demoVideo, onMediaChange, onVideoChange }) {
       {/* Media gallery */}
       <label className="adm-field__label" style={{ margin: "16px 0 8px", display: "block" }}>
         Media Gallery
-        <span style={{ fontWeight: 400, color: "#94a3b8", marginLeft: 6 }}>— drag to reorder · ★ to set featured · first item is featured by default</span>
+        <span style={{ fontWeight: 400, color: "#94a3b8", marginLeft: 6 }}>
+          — position 1 is always the featured image · drag or click ★ to promote to featured
+        </span>
       </label>
 
       {media.length === 0 ? (
@@ -245,7 +232,7 @@ function MediaManager({ media, demoVideo, onMediaChange, onVideoChange }) {
           {media.map((item, i) => (
             <div
               key={i}
-              className={`adm-media-item${(item.featured || item.is_featured) ? " adm-media-item--featured" : ""}${dragOverIdx === i ? " adm-media-item--dragover" : ""}${dragIdx === i ? " adm-media-item--dragging" : ""}`}
+              className={`adm-media-item${i === 0 ? " adm-media-item--featured" : ""}${dragOverIdx === i ? " adm-media-item--dragover" : ""}${dragIdx === i ? " adm-media-item--dragging" : ""}`}
               draggable
               onDragStart={(e) => handleDragStart(e, i)}
               onDragOver={(e) => handleDragOver(e, i)}
@@ -262,7 +249,24 @@ function MediaManager({ media, demoVideo, onMediaChange, onVideoChange }) {
                   : <img src={item.url} alt={item.caption || `Media ${i + 1}`}
                       onError={(e) => { e.target.src = `https://picsum.photos/seed/${i}/220/140`; }} />
                 }
-                {(item.featured || item.is_featured) && <div className="adm-media-item__badge">★ Featured</div>}
+                {/* Featured badge — only position 0 */}
+                {i === 0 && (
+                  <div className="adm-media-item__badge">★ Featured</div>
+                )}
+                {/* Position number */}
+                <div style={{
+                  position: "absolute", bottom: 6, right: 6,
+                  background: "rgba(15,23,42,.65)", color: "#fff",
+                  fontSize: ".65rem", fontWeight: 700,
+                  padding: "2px 6px", borderRadius: 4,
+                }}>
+                  #{i + 1}
+                </div>
+                {item._pending && (
+                  <div className="adm-media-item__badge" style={{ background: "rgba(217,119,6,.85)", right: "auto", left: 6 }}>
+                    ⏳ Pending
+                  </div>
+                )}
                 <div className="adm-media-item__drag-hint">⠿ drag</div>
               </div>
 
@@ -278,9 +282,15 @@ function MediaManager({ media, demoVideo, onMediaChange, onVideoChange }) {
                   className="adm-media-item__ctrl adm-media-item__ctrl--move">
                   ‹
                 </button>
-                <button type="button" title="Set as featured"
+                {/* ★ = set as featured (moves to position 0). Disabled if already #1 */}
+                <button
+                  type="button"
+                  title={i === 0 ? "Already featured (position 1)" : "Set as featured image"}
                   onClick={() => setFeatured(i)}
-                  className={`adm-media-item__ctrl${(item.featured || item.is_featured) ? " adm-media-item__ctrl--active" : ""}`}>
+                  disabled={i === 0}
+                  className={`adm-media-item__ctrl${i === 0 ? " adm-media-item__ctrl--active" : ""}`}
+                  style={{ cursor: i === 0 ? "default" : "pointer" }}
+                >
                   ★
                 </button>
                 <button type="button" title="Remove"
@@ -301,14 +311,10 @@ function MediaManager({ media, demoVideo, onMediaChange, onVideoChange }) {
 
       {/* Add via URL */}
       <div style={{ background: "#f8f9fb", border: "1px solid #e2e8f0", borderRadius: 10, padding: 14, display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
-        <div style={{ fontSize: ".78rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: ".4px" }}>Or add via URL</div>
+        <div style={{ fontSize: ".78rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: ".4px" }}>Or add image via URL</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <select className="adm-field__input" style={{ width: "auto", flex: "0 0 120px" }} value={typeInput} onChange={(e) => setTypeInput(e.target.value)}>
-            <option value="image">Image</option>
-            <option value="video">Video</option>
-          </select>
           <input className="adm-field__input" style={{ flex: 1, minWidth: 200 }}
-            placeholder={typeInput === "image" ? "Image URL (https://...)" : "Video URL (.mp4 or YouTube)"}
+            placeholder="Image URL (https://...)"
             value={urlInput} onChange={(e) => setUrlInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addMedia(); } }} />
           <input className="adm-field__input" style={{ flex: "0 0 160px" }}
@@ -317,7 +323,7 @@ function MediaManager({ media, demoVideo, onMediaChange, onVideoChange }) {
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addMedia(); } }} />
           <button type="button" className="adm-btn adm-btn--primary adm-btn--sm" onClick={addMedia}>Add</button>
         </div>
-        <p className="adm-field__hint">For demo images: https://picsum.photos/seed/YOURNAME/800/500</p>
+        <p className="adm-field__hint">Paste any public image URL. Files uploaded above are saved to Supabase on submit.</p>
       </div>
     </div>
   );
@@ -558,13 +564,10 @@ function ProjectForm({ initial, onSave, onCancel, isEdit, saving }) {
         <div style={{ fontWeight: 700, fontSize: ".95rem", marginBottom: 18, color: "#0f172a" }}>Media Gallery</div>
         <MediaManager
           media={form.media || []}
-          demoVideo={form.demoVideo || ""}
           onMediaChange={(v) => {
             setVal("media", v);
-            // keep legacy screenshots in sync
             setVal("screenshots", v.filter((m) => m.type === "image").map((m) => m.url));
           }}
-          onVideoChange={(v) => setVal("demoVideo", v)}
         />
       </div>
 
@@ -640,7 +643,7 @@ function ProjectForm({ initial, onSave, onCancel, isEdit, saving }) {
         <button type="button" className="adm-btn adm-btn--ghost" onClick={onCancel}>Cancel</button>
         <button type="submit" className="adm-btn adm-btn--primary" disabled={saving}>
           {saving
-            ? <span style={{ width: 16, height: 16, borderRadius: "50%", border: "2px solid rgba(255,255,255,.3)", borderTopColor: "#fff", animation: "adm-spin .7s linear infinite", display: "inline-block" }} />
+            ? <><span style={{ width: 16, height: 16, borderRadius: "50%", border: "2px solid rgba(255,255,255,.3)", borderTopColor: "#fff", animation: "adm-spin .7s linear infinite", display: "inline-block", marginRight: 8 }} />Uploading to Supabase…</>
             : <><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> {isEdit ? "Save Changes" : "Add Project"}</>
           }
         </button>
@@ -890,24 +893,36 @@ export function AdminAddProject() {
       const created = await createAdminProject(data);
       const pid = created.id;
 
-      // Upload thumbnail if selected
+      const mediaList    = Array.isArray(data.media) ? data.media : [];
+      const featuredItem = mediaList[0];
+
+      // ── Upload thumbnail → Supabase first, then patch Django ──────────────
+      let thumbnailUrl = featuredItem?.url || ""; // default to position-0 media URL
       if (data._thumbnailFile && pid) {
-        try { await uploadProjectThumbnail(pid, data._thumbnailFile); } catch (e) {
-          setApiError("Project created but thumbnail upload failed: " + extractApiError(e));
+        try {
+          thumbnailUrl = await uploadToSupabase(data._thumbnailFile, `projects/${pid}/thumbnails`);
+        } catch (e) {
+          try { await uploadProjectThumbnail(pid, data._thumbnailFile); } catch {}
+          setApiError("Thumbnail: " + (e.message || "Upload failed"));
         }
       }
+      if (thumbnailUrl && pid) {
+        await updateAdminProject(pid, { thumbnail: thumbnailUrl });
+      }
 
-      // Upload any media items that are File objects (not yet URLs)
-      if (pid && Array.isArray(data.media)) {
-        for (let i = 0; i < data.media.length; i++) {
-          const item = data.media[i];
+      // ── Upload media items → Supabase, save URLs to Django ────────────────
+      if (pid && mediaList.length > 0) {
+        for (let i = 0; i < mediaList.length; i++) {
+          const item  = mediaList[i];
+          const isFeat = i === 0;
           if (item._file instanceof File) {
             try {
-              await uploadProjectMedia(pid, item._file, { isFeatured: item.featured || i === 0, order: i });
-            } catch (e) { /* non-critical */ }
-          } else if (item.url && !item.url.startsWith("data:")) {
+              const mediaUrl = await uploadToSupabase(item._file, `projects/${pid}/media`);
+              await addProjectMediaUrl(pid, { url: mediaUrl, mediaType: "image", isFeatured: isFeat, order: i, caption: item.caption || "" });
+            } catch (e) { console.warn("Media upload failed:", e.message); }
+          } else if (item.url && !item.url.startsWith("blob:") && !item.url.startsWith("data:")) {
             try {
-              await addProjectMediaUrl(pid, { url: item.url, mediaType: item.type === "video" ? "video" : "url", isFeatured: item.featured || i === 0, order: i });
+              await addProjectMediaUrl(pid, { url: item.url, mediaType: "image", isFeatured: isFeat, order: i, caption: item.caption || "" });
             } catch (e) { /* non-critical */ }
           }
         }
@@ -994,30 +1009,73 @@ export function AdminEditProject() {
     setSaving(true);
     setApiError("");
     try {
+      // ── 1. Save core project fields ─────────────────────────────────────
       await updateAdminProject(id, data);
 
-      // Upload new thumbnail if selected
+      // ── 2. Determine the featured image URL (position 0 in the media list) ──
+      const mediaList  = Array.isArray(data.media) ? data.media : [];
+      const featuredItem = mediaList[0]; // position 0 is ALWAYS featured
+      const featuredUrl  = featuredItem?.url || featuredItem?.file_url || "";
+
+      // ── 3. Upload new thumbnail file → Supabase if provided ────────────
+      let thumbnailUrl = featuredUrl; // default: use featured media URL
       if (data._thumbnailFile) {
-        try { await uploadProjectThumbnail(id, data._thumbnailFile); } catch (e) {
-          setApiError("Project saved but thumbnail upload failed: " + extractApiError(e));
+        try {
+          thumbnailUrl = await uploadToSupabase(
+            data._thumbnailFile,
+            `projects/${id}/thumbnails`
+          );
+        } catch (e) {
+          try { await uploadProjectThumbnail(id, data._thumbnailFile); } catch {}
+          setApiError("Thumbnail: " + (e.message || "Upload failed"));
           setSaving(false); return;
         }
       }
 
-      // Upload any new media File objects
-      if (Array.isArray(data.media)) {
-        for (let i = 0; i < data.media.length; i++) {
-          const item = data.media[i];
-          if (item._file instanceof File) {
-            try {
-              await uploadProjectMedia(id, item._file, { isFeatured: item.featured || i === 0, order: i });
-            } catch (e) { /* non-critical */ }
-          } else if (item.url && !item.url.startsWith("data:") && !item.id) {
-            // New URL-based item (no id means not yet saved)
-            try {
-              await addProjectMediaUrl(id, { url: item.url, mediaType: item.type === "video" ? "video" : "url", isFeatured: item.featured || i === 0, order: i });
-            } catch (e) { /* non-critical */ }
-          }
+      // ── 4. Patch thumbnail to the featured image URL ────────────────────
+      if (thumbnailUrl) {
+        await updateAdminProject(id, { thumbnail: thumbnailUrl });
+      }
+
+      // ── 5. Sync all media items — existing ones get PATCH, new ones get POST ──
+      for (let i = 0; i < mediaList.length; i++) {
+        const item  = mediaList[i];
+        const isFeat = i === 0; // only position 0 is featured
+
+        if (item._file instanceof File) {
+          // New file — upload to Supabase then POST to Django
+          try {
+            const mediaUrl = await uploadToSupabase(item._file, `projects/${id}/media`);
+            await addProjectMediaUrl(id, {
+              url:        mediaUrl,
+              mediaType:  "image",
+              isFeatured: isFeat,
+              order:      i,
+              caption:    item.caption || "",
+            });
+          } catch (e) { console.warn("Media upload failed:", e.message); }
+
+        } else if (item.id) {
+          // Existing media item — PATCH its order and is_featured
+          try {
+            await updateProjectMedia(id, item.id, {
+              isFeatured: isFeat,
+              order:      i,
+              caption:    item.caption || "",
+            });
+          } catch (e) { console.warn("Media update failed:", e.message); }
+
+        } else if (item.url && !item.url.startsWith("blob:") && !item.url.startsWith("data:")) {
+          // New URL-based item — POST to Django
+          try {
+            await addProjectMediaUrl(id, {
+              url:        item.url,
+              mediaType:  "image",
+              isFeatured: isFeat,
+              order:      i,
+              caption:    item.caption || "",
+            });
+          } catch (e) { console.warn("Media URL add failed:", e.message); }
         }
       }
 

@@ -463,41 +463,79 @@ function ProjectBadge({ label }) {
 
 function ProjectCard({ project, onAddToCart }) {
   const discount = Math.round(((project.originalPrice - project.price) / project.originalPrice) * 100);
+
+  // Pick the best available image: thumbnail → first featured media → first media
+  const heroImage =
+    project.thumbnail ||
+    project.media?.find(m => m.featured || m.is_featured)?.url ||
+    project.media?.[0]?.url ||
+    project.screenshots?.[0] ||
+    "";
+
   return (
     <div className={`wx-project-card ${project.soldOut ? "wx-project-card--sold-out" : ""}`}>
       {project.badge && <ProjectBadge label={project.badge} />}
       {project.soldOut && <div className="wx-project-card__sold-out-overlay">Sold Out</div>}
-      <div className="wx-project-card__header">
-        <div className="wx-project-card__level" style={{ color: LEVEL_COLORS[project.level] }}>
-          <svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="currentColor"/></svg>
-          {project.level}
+
+      {/* ── Thumbnail ── */}
+      <div className="wx-project-card__thumb-wrap">
+        {heroImage ? (
+          <img
+            src={heroImage}
+            alt={project.title}
+            className="wx-project-card__thumb"
+            loading="lazy"
+            onError={(e) => {
+              e.currentTarget.style.display = "none";
+              e.currentTarget.parentElement.classList.add("wx-project-card__thumb-wrap--fallback");
+            }}
+          />
+        ) : (
+          <div className="wx-project-card__thumb-placeholder">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" opacity="0.3">
+              <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
+            </svg>
+          </div>
+        )}
+        {/* Overlay gradient for a polished look */}
+        <div className="wx-project-card__thumb-overlay" />
+        {/* Category chip on image */}
+        <span className="wx-project-card__category-chip">{project.category}</span>
+      </div>
+
+      <div className="wx-project-card__body">
+        <div className="wx-project-card__header">
+          <div className="wx-project-card__level" style={{ color: LEVEL_COLORS[project.level] }}>
+            <svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="currentColor"/></svg>
+            {project.level}
+          </div>
+          <div className="wx-project-card__delivery"><Icon.Clock /> {project.delivery}</div>
         </div>
-        <div className="wx-project-card__delivery"><Icon.Clock /> {project.delivery}</div>
-      </div>
-      <h3 className="wx-project-card__title">{project.title}</h3>
-      <p className="wx-project-card__desc">{project.description}</p>
-      <div className="wx-project-card__tags">
-        {project.tags.map((t) => <span key={t} className="wx-tag">{t}</span>)}
-      </div>
-      <ul className="wx-project-card__features">
-        {project.features.map((f) => (
-          <li key={f}><span className="wx-check"><Icon.Check /></span>{f}</li>
-        ))}
-      </ul>
-      <div className="wx-project-card__pricing">
-        <div className="wx-project-card__price">
-          <span className="wx-price-current">₹{project.price.toLocaleString("en-IN")}</span>
-          <span className="wx-price-original">₹{project.originalPrice.toLocaleString("en-IN")}</span>
-          <span className="wx-price-discount">{discount}% OFF</span>
+        <h3 className="wx-project-card__title">{project.title}</h3>
+        <p className="wx-project-card__desc">{project.description}</p>
+        <div className="wx-project-card__tags">
+          {project.tags.map((t) => <span key={t} className="wx-tag">{t}</span>)}
         </div>
-      </div>
-      <div className="wx-project-card__actions">
-        <button className="wx-btn wx-btn--primary wx-btn--full" disabled={project.soldOut}
-          onClick={() => !project.soldOut && onAddToCart(project)}>
-          {project.soldOut ? "Sold Out" : "Add to Cart"}
-        </button>
-        <Link to={`/projects/${project.slug}`} className="wx-btn wx-btn--ghost wx-btn--full">View Details</Link>
-      </div>
+        <ul className="wx-project-card__features">
+          {project.features.map((f) => (
+            <li key={f}><span className="wx-check"><Icon.Check /></span>{f}</li>
+          ))}
+        </ul>
+        <div className="wx-project-card__pricing">
+          <div className="wx-project-card__price">
+            <span className="wx-price-current">₹{project.price.toLocaleString("en-IN")}</span>
+            <span className="wx-price-original">₹{project.originalPrice.toLocaleString("en-IN")}</span>
+            <span className="wx-price-discount">{discount}% OFF</span>
+          </div>
+        </div>
+        <div className="wx-project-card__actions">
+          <button className="wx-btn wx-btn--primary wx-btn--full" disabled={project.soldOut}
+            onClick={() => !project.soldOut && onAddToCart(project)}>
+            {project.soldOut ? "Sold Out" : "Add to Cart"}
+          </button>
+          <Link to={`/projects/${project.slug}`} className="wx-btn wx-btn--ghost wx-btn--full">View Details</Link>
+        </div>
+      </div>{/* end wx-project-card__body */}
     </div>
   );
 }

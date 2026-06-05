@@ -417,6 +417,19 @@ export async function addProjectMediaUrl(projectId, { url, mediaType = "url", is
 }
 
 /**
+ * Update an existing media item's order and featured status.
+ * PATCH /api/v1/admin/projects/:projectId/media/:mediaId/
+ */
+export async function updateProjectMedia(projectId, mediaId, { isFeatured = false, order = 0, caption = "" }) {
+  const res = await api.patch(`/admin/projects/${projectId}/media/${mediaId}/`, {
+    is_featured: isFeatured,
+    order,
+    ...(caption ? { caption } : {}),
+  });
+  return res.data;
+}
+
+/**
  * Delete a media item from a project's gallery.
  * DELETE /api/v1/admin/projects/:projectId/media/:mediaId/
  */

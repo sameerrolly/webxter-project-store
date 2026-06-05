@@ -82,18 +82,27 @@ function normalise(p) {
 
 // ─── Media Gallery ────────────────────────────────────────────────────────────
 function MediaGallery({ project }) {
-  const slides = [];
-  if (project.demoVideo) {
-    slides.push({ type: "video", url: project.demoVideo, caption: "Demo Video", featured: true });
-  }
-  const mediaItems = project.media?.length > 0
+  // Build slides from media items only (images) — no YouTube/video
+  const rawMedia = project.media?.length > 0
     ? project.media
-    : project.screenshots.map((url, i) => ({ type: "image", url, caption: `Screenshot ${i + 1}`, featured: i === 0 }));
-  slides.push(...mediaItems);
+    : project.screenshots.map((url, i) => ({
+        type: "image", url, caption: `Screenshot ${i + 1}`,
+        is_featured: i === 0, featured: i === 0,
+      }));
 
-  // Thumbnail fallback
+  // Sort: featured first, then by order
+  const slides = [...rawMedia]
+    .filter(m => m.type === "image" || m.media_type === "image" || (!m.type && !m.media_type))
+    .sort((a, b) => {
+      const aFeat = a.is_featured || a.featured ? 0 : 1;
+      const bFeat = b.is_featured || b.featured ? 0 : 1;
+      if (aFeat !== bFeat) return aFeat - bFeat;
+      return (a.order ?? 0) - (b.order ?? 0);
+    });
+
+  // Thumbnail fallback if no media
   if (slides.length === 0 && project.thumbnail) {
-    slides.push({ type: "image", url: project.thumbnail, caption: project.title, featured: true });
+    slides.push({ type: "image", url: project.thumbnail, caption: project.title, is_featured: true });
   }
 
   const hasContent = slides.length > 0;
@@ -111,17 +120,16 @@ function MediaGallery({ project }) {
         <a href="https://webxter.in/contact" className="pdp-btn pdp-btn--primary pdp-btn--sm" style={{ marginTop: 12 }}>Request Demo</a>
       </div>
     );
-    const ytId = current.type === "video" ? getYouTubeId(current.url) : null;
-    if (ytId) return (
-      <iframe src={`https://www.youtube.com/embed/${ytId}?rel=0&modestbranding=1`}
-        title={current.caption || "Demo"} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-        allowFullScreen className="pdp-gallery__iframe" />
+    // Always render as image (no YouTube, no video)
+    const imgUrl = current.url || current.file_url || "";
+    return (
+      <img
+        src={imgUrl}
+        alt={current.caption || project.title}
+        className="pdp-gallery__img"
+        onError={(e) => { e.currentTarget.src = project.thumbnail || `https://picsum.photos/seed/${project.id}/800/500`; }}
+      />
     );
-    if (current.type === "video") return (
-      <video controls className="pdp-gallery__img" src={current.url}>Your browser does not support video.</video>
-    );
-    return <img src={current.url} alt={current.caption || "Screenshot"} className="pdp-gallery__img"
-      onError={(e) => { e.currentTarget.src = `https://picsum.photos/seed/${project.id}/800/500`; }} />;
   };
 
   return (
@@ -132,19 +140,24 @@ function MediaGallery({ project }) {
       </div>
       {displaySlides.length > 1 && (
         <div className="pdp-gallery__thumbs">
-          {displaySlides.map((s, i) => {
-            const ytId = s?.type === "video" ? getYouTubeId(s.url) : null;
-            return (
-              <button key={i} onClick={() => setActive(i)}
-                className={`pdp-gallery__thumb ${i === active ? "pdp-gallery__thumb--active" : ""}`}>
-                {!s ? <div className="pdp-gallery__thumb-placeholder"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/></svg></div>
-                  : ytId ? <div className="pdp-gallery__thumb-video"><img src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`} alt="YouTube" /><div className="pdp-gallery__thumb-play">▶</div></div>
-                  : s.type === "video" ? <div className="pdp-gallery__thumb-video"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg></div>
-                  : <img src={s.url} alt={s.caption || `Thumb ${i + 1}`} onError={(e) => { e.currentTarget.src = `https://picsum.photos/seed/${i}/160/100`; }} />
-                }
-              </button>
-            );
-          })}
+          {displaySlides.map((s, i) => (
+            <button key={i} onClick={() => setActive(i)}
+              className={`pdp-gallery__thumb ${i === active ? "pdp-gallery__thumb--active" : ""}`}>
+              {!s
+                ? <div className="pdp-gallery__thumb-placeholder">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/></svg>
+                  </div>
+                : <img
+                    src={s.url || s.file_url || ""}
+                    alt={s.caption || `Preview ${i + 1}`}
+                    onError={(e) => { e.currentTarget.src = `https://picsum.photos/seed/${i}/160/100`; }}
+                  />
+              }
+              {(s?.is_featured || s?.featured) && i === 0 && (
+                <div style={{ position: "absolute", bottom: 2, left: 2, background: "rgba(0,159,212,.85)", color: "#fff", fontSize: ".6rem", fontWeight: 700, padding: "1px 5px", borderRadius: 4 }}>★</div>
+              )}
+            </button>
+          ))}
         </div>
       )}
       {current?.caption && <p className="pdp-gallery__caption">{current.caption}</p>}
